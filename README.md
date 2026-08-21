@@ -3,7 +3,7 @@
 # swiyu - Android wallet
 
 An official Swiss Government project made by the [Federal Office of Information Technology, Systems and Telecommunication FOITT](https://www.bit.admin.ch/en)
-as part of the electronic identity (E-ID) project.dddd
+as part of the electronic identity (E-ID) project.
 
 ## Table of Contents
 - [Overview](#overview)
