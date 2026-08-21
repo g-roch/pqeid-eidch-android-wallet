@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -27,7 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.Icon
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +38,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -46,14 +49,14 @@ import ch.admin.foitt.wallet.R
 import ch.admin.foitt.wallet.platform.actorMetadata.domain.model.ActorType
 import ch.admin.foitt.wallet.platform.actorMetadata.presentation.InvitationHeader
 import ch.admin.foitt.wallet.platform.actorMetadata.presentation.model.ActorUiState
-import ch.admin.foitt.wallet.platform.badges.domain.model.BadgeType
+import ch.admin.foitt.wallet.platform.composables.AdaptiveButtonContainer
 import ch.admin.foitt.wallet.platform.composables.Buttons
 import ch.admin.foitt.wallet.platform.composables.LoadingOverlay
 import ch.admin.foitt.wallet.platform.composables.presentation.HeightReportingLayout
 import ch.admin.foitt.wallet.platform.composables.presentation.WindowWidthClass
 import ch.admin.foitt.wallet.platform.composables.presentation.windowWidthClass
-import ch.admin.foitt.wallet.platform.nonCompliance.domain.model.ActorComplianceState
 import ch.admin.foitt.wallet.platform.preview.WalletAllScreenPreview
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.ActorComplianceState
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.TrustStatus
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.VcSchemaTrustStatus
 import ch.admin.foitt.wallet.platform.utils.TestTags
@@ -66,8 +69,8 @@ import ch.admin.foitt.wallet.theme.WalletTheme
 fun CredentialActionFeedbackCardError(
     modifier: Modifier = Modifier,
     issuer: ActorUiState,
-    @StringRes contentTextFirstParagraphText: Int? = null,
-    @StringRes contentTextSecondParagraphText: Int? = null,
+    contentTextFirstParagraphText: String? = null,
+    contentTextSecondParagraphText: String? = null,
     iconAlwaysVisible: Boolean = false,
     @DrawableRes contentIcon: Int? = null,
     backgroundColor: Color = WalletTheme.colorScheme.surfaceContainerHighest,
@@ -75,19 +78,18 @@ fun CredentialActionFeedbackCardError(
     secondaryTextColor: Color = WalletTheme.colorScheme.onSurfaceVariant,
     primaryButtonColors: ButtonColors = WalletButtonColors.feedbackFailurePrimary(),
     secondaryButtonColors: ButtonColors = WalletButtonColors.feedbackFailureSecondary(),
-    content: @Composable (() -> Unit)? = null,
-    @StringRes primaryButtonText: Int? = null,
+    primaryButtonText: String? = null,
     @StringRes secondaryButtonText: Int? = null,
     onPrimaryButton: (() -> Unit)? = null,
     onSecondaryButton: (() -> Unit)? = null,
-    onBadge: (BadgeType) -> Unit,
+    onActorNameTap: () -> Unit,
+    onReportedActorInfo: () -> Unit
 ) {
     CredentialActionFeedbackCard(
         modifier = modifier,
         issuer = issuer,
         contentTextFirstParagraphText = contentTextFirstParagraphText,
         contentTextSecondParagraphText = contentTextSecondParagraphText,
-        content = content,
         iconAlwaysVisible = iconAlwaysVisible,
         contentIcon = contentIcon,
         backgroundColor = backgroundColor,
@@ -99,7 +101,8 @@ fun CredentialActionFeedbackCardError(
         secondaryButtonText = secondaryButtonText,
         onPrimaryButton = onPrimaryButton,
         onSecondaryButton = onSecondaryButton,
-        onBadge = onBadge,
+        onActorNameTap = onActorNameTap,
+        onReportedActorInfo = onReportedActorInfo
     )
 }
 
@@ -108,19 +111,19 @@ fun CredentialActionFeedbackCardSuccess(
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
     issuer: ActorUiState,
-    @StringRes contentTextFirstParagraphText: Int? = null,
-    @StringRes contentTextSecondParagraphText: Int? = null,
+    contentTextFirstParagraphText: String? = null,
+    contentTextSecondParagraphText: String? = null,
     @StringRes contentTextThirdParagraphText: Int? = null,
     iconAlwaysVisible: Boolean = false,
     @DrawableRes contentIcon: Int? = null,
     backgroundColor: Color = WalletTheme.colorScheme.tertiary,
     textColor: Color = WalletTheme.colorScheme.lightTertiary,
     primaryButtonColors: ButtonColors = WalletButtonColors.feedbackSuccessPrimary(),
-    @StringRes primaryButtonText: Int? = null,
-    content: (@Composable () -> Unit)?,
+    primaryButtonText: String? = null,
     onPrimaryButton: (() -> Unit)? = null,
     onSecondaryButton: (() -> Unit)? = null,
-    onBadge: (BadgeType) -> Unit,
+    onActorNameTap: () -> Unit,
+    onReportedActorInfo: () -> Unit
 ) {
     CredentialActionFeedbackCard(
         modifier = modifier,
@@ -135,10 +138,10 @@ fun CredentialActionFeedbackCardSuccess(
         textColor = textColor,
         primaryButtonColors = primaryButtonColors,
         primaryButtonText = primaryButtonText,
-        content = content,
         onPrimaryButton = onPrimaryButton,
         onSecondaryButton = onSecondaryButton,
-        onBadge = onBadge,
+        onActorNameTap = onActorNameTap,
+        onReportedActorInfo = onReportedActorInfo
     )
 }
 
@@ -147,8 +150,8 @@ fun CredentialActionFeedbackCard(
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
     issuer: ActorUiState,
-    @StringRes contentTextFirstParagraphText: Int? = null,
-    @StringRes contentTextSecondParagraphText: Int? = null,
+    contentTextFirstParagraphText: String? = null,
+    contentTextSecondParagraphText: String? = null,
     @StringRes contentTextThirdParagraphText: Int? = null,
     iconAlwaysVisible: Boolean = false,
     @DrawableRes contentIcon: Int? = null,
@@ -157,12 +160,15 @@ fun CredentialActionFeedbackCard(
     secondaryTextColor: Color = WalletTheme.colorScheme.lightPrimary,
     primaryButtonColors: ButtonColors = WalletButtonColors.feedbackDeclinePrimary(),
     secondaryButtonColors: ButtonColors = WalletButtonColors.feedbackDeclineSecondary(),
-    @StringRes primaryButtonText: Int? = null,
+    ternaryButtonColors: ButtonColors = WalletButtonColors.feedbackDeclineSecondary(),
+    primaryButtonText: String? = null,
     @StringRes secondaryButtonText: Int? = null,
-    content: (@Composable () -> Unit)? = null,
+    @StringRes ternaryButtonText: Int? = null,
     onPrimaryButton: (() -> Unit)? = null,
     onSecondaryButton: (() -> Unit)? = null,
-    onBadge: (BadgeType) -> Unit,
+    onTernaryButton: (() -> Unit)? = null,
+    onActorNameTap: () -> Unit,
+    onReportedActorInfo: () -> Unit
 ) {
     val headerHeight = remember { mutableStateOf(0.dp) }
     val stickyBottomHeight = remember { mutableStateOf(0.dp) }
@@ -181,7 +187,8 @@ fun CredentialActionFeedbackCard(
             Header(
                 issuer = issuer,
                 headerHeight = headerHeight,
-                onBadge = onBadge,
+                onActorNameTap = onActorNameTap,
+                onReportedActorInfo = onReportedActorInfo
             )
 
             val minHeight = this@BoxWithConstraints.maxHeight - headerHeight.value
@@ -196,7 +203,6 @@ fun CredentialActionFeedbackCard(
                 backgroundColor = backgroundColor,
                 textColor = textColor,
                 secondaryTextColor = secondaryTextColor,
-                content = content,
             )
         }
         StickyBottomButtons(
@@ -204,10 +210,13 @@ fun CredentialActionFeedbackCard(
             stickyBottomHeight = stickyBottomHeight,
             onPrimaryButton = onPrimaryButton,
             onSecondaryButton = onSecondaryButton,
+            onTernaryButton = onTernaryButton,
             primaryButtonText = primaryButtonText,
             secondaryButtonText = secondaryButtonText,
             primaryButtonColors = primaryButtonColors,
             secondaryButtonColors = secondaryButtonColors,
+            ternaryButtonText = ternaryButtonText,
+            ternaryButtonColors = ternaryButtonColors,
         )
         LoadingOverlay(showOverlay = isLoading)
     }
@@ -215,9 +224,10 @@ fun CredentialActionFeedbackCard(
 
 @Composable
 private fun Header(
-    issuer: ActorUiState,
     headerHeight: MutableState<Dp>,
-    onBadge: (BadgeType) -> Unit,
+    issuer: ActorUiState,
+    onActorNameTap: () -> Unit,
+    onReportedActorInfo: () -> Unit
 ) = HeightReportingLayout(
     onContentHeightMeasured = { height -> headerHeight.value = height }
 ) {
@@ -225,7 +235,8 @@ private fun Header(
         InvitationHeader(
             modifier = Modifier.padding(horizontal = Sizes.s04),
             actorUiState = issuer,
-            onBadge = onBadge,
+            onActorNameTap = onActorNameTap,
+            onReportedActorInfo = onReportedActorInfo
         )
         Spacer(modifier = Modifier.height(Sizes.s06))
     }
@@ -236,14 +247,13 @@ private fun Sheet(
     modifier: Modifier = Modifier,
     stickyBottomHeight: Dp,
     iconAlwaysVisible: Boolean,
-    @StringRes contentTextFirstParagraph: Int?,
-    @StringRes contentTextSecondParagraph: Int?,
+    contentTextFirstParagraph: String?,
+    contentTextSecondParagraph: String?,
     @StringRes contentTextThirdParagraph: Int?,
     @DrawableRes contentIcon: Int?,
     backgroundColor: Color,
     textColor: Color,
     secondaryTextColor: Color,
-    content: (@Composable () -> Unit)?,
 ) = Box(
     modifier = modifier
         .fillMaxWidth()
@@ -257,8 +267,9 @@ private fun Sheet(
             .fillMaxSize()
             .padding(bottom = Sizes.s06 + stickyBottomHeight),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        val compact = currentWindowAdaptiveInfo().windowWidthClass() == WindowWidthClass.COMPACT
+        val compact = currentWindowAdaptiveInfoV2().windowWidthClass() == WindowWidthClass.COMPACT
         if ((iconAlwaysVisible || compact) && contentIcon != null) {
             Icon(
                 modifier = Modifier
@@ -272,16 +283,23 @@ private fun Sheet(
         }
         if (contentTextFirstParagraph != null) {
             WalletTexts.TitleMedium(
-                text = stringResource(id = contentTextFirstParagraph),
+                text = contentTextFirstParagraph,
                 color = textColor,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.testTag(TestTags.DECLINE_SCREEN_TITLE.name)
+                modifier = Modifier
+                    .semantics {
+                        if (contentTextSecondParagraph != null || contentTextThirdParagraph != null) {
+                            heading()
+                        }
+                        liveRegion = LiveRegionMode.Assertive
+                    }
+                    .testTag(TestTags.DECLINE_SCREEN_TITLE.name),
             )
         }
         if (contentTextSecondParagraph != null) {
             Spacer(modifier = Modifier.height(Sizes.s01))
             WalletTexts.BodyLarge(
-                text = stringResource(id = contentTextSecondParagraph),
+                text = contentTextSecondParagraph,
                 color = secondaryTextColor,
                 textAlign = TextAlign.Center,
             )
@@ -292,15 +310,6 @@ private fun Sheet(
                 color = secondaryTextColor,
             )
         }
-        if (content != null) {
-            Spacer(modifier = Modifier.height(Sizes.s04))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction = if (!compact) 0.7f else 1f),
-            ) {
-                content()
-            }
-        }
     }
 }
 
@@ -309,42 +318,62 @@ private fun Sheet(
 private fun StickyBottomButtons(
     modifier: Modifier,
     stickyBottomHeight: MutableState<Dp>,
-    @StringRes primaryButtonText: Int?,
+    primaryButtonText: String?,
     @StringRes secondaryButtonText: Int?,
+    @StringRes ternaryButtonText: Int?,
     primaryButtonColors: ButtonColors,
     secondaryButtonColors: ButtonColors,
+    ternaryButtonColors: ButtonColors,
     onPrimaryButton: (() -> Unit)?,
     onSecondaryButton: (() -> Unit)?,
+    onTernaryButton: (() -> Unit)?,
 ) = HeightReportingLayout(
     modifier = modifier,
     onContentHeightMeasured = { height -> stickyBottomHeight.value = height }
 ) {
-    FlowRow(
+    AdaptiveButtonContainer(
+        buttons = buildList {
+            if (onPrimaryButton != null && primaryButtonText != null) {
+                add(
+                    {
+                        Buttons.Text(
+                            text = primaryButtonText,
+                            onClick = onPrimaryButton,
+                            colors = primaryButtonColors,
+                            modifier = Modifier.testTag(TestTags.ACCEPT_BUTTON.name)
+                        )
+                    }
+                )
+            }
+            if (onTernaryButton != null && ternaryButtonText != null) {
+                add(
+                    {
+                        Buttons.Text(
+                            text = stringResource(id = ternaryButtonText),
+                            onClick = onTernaryButton,
+                            colors = ternaryButtonColors
+                        )
+                    }
+                )
+            }
+            if (onSecondaryButton != null && secondaryButtonText != null) {
+                add(
+                    {
+                        Buttons.Text(
+                            text = stringResource(id = secondaryButtonText),
+                            onClick = onSecondaryButton,
+                            colors = secondaryButtonColors,
+                            modifier = Modifier.testTag(TestTags.DECLINE_BUTTON.name)
+                        )
+                    }
+                )
+            }
+        },
         modifier = Modifier
-            .padding(bottom = Sizes.s02)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
-            .focusGroup(),
-        horizontalArrangement = Arrangement.spacedBy(Sizes.s02, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(Sizes.s02, Alignment.Top),
-        maxItemsInEachRow = 2,
-    ) {
-        if (onPrimaryButton != null && primaryButtonText != null) {
-            Buttons.Text(
-                text = stringResource(id = primaryButtonText),
-                onClick = onPrimaryButton,
-                colors = primaryButtonColors,
-                modifier = Modifier.testTag(TestTags.ACCEPT_BUTTON.name)
-            )
-        }
-        if (onSecondaryButton != null && secondaryButtonText != null) {
-            Buttons.Text(
-                text = stringResource(id = secondaryButtonText),
-                onClick = onSecondaryButton,
-                colors = secondaryButtonColors,
-                modifier = Modifier.testTag(TestTags.DECLINE_BUTTON.name)
-            )
-        }
-    }
+            .padding(Sizes.s04)
+            .focusGroup()
+    )
 }
 
 @WalletAllScreenPreview
@@ -361,16 +390,19 @@ private fun CredentialActionFeedbackCardPreview() {
                 actorComplianceState = ActorComplianceState.REPORTED,
                 nonComplianceReason = "report reason",
             ),
-            contentTextFirstParagraphText = R.string.tk_receive_declineOffer_primary,
-            contentTextSecondParagraphText = R.string.tk_receive_declineOffer_secondary,
+            contentTextFirstParagraphText = stringResource(R.string.tk_receive_declineOffer_primary),
+            contentTextSecondParagraphText = stringResource(R.string.tk_receive_declineOffer_secondary),
             contentTextThirdParagraphText = R.string.tk_getBetaId_error_smallbody,
             contentIcon = R.drawable.wallet_ic_circular_questionmark,
             iconAlwaysVisible = true,
             onSecondaryButton = {},
+            onTernaryButton = {},
             onPrimaryButton = {},
-            primaryButtonText = R.string.tk_receive_declineOffer_primaryButton,
+            primaryButtonText = stringResource(R.string.tk_receive_declineOffer_primaryButton),
             secondaryButtonText = R.string.tk_global_cancel,
-            onBadge = {},
+            ternaryButtonText = R.string.tk_receive_declineOffer_ternaryButton,
+            onActorNameTap = {},
+            onReportedActorInfo = {}
         )
     }
 }

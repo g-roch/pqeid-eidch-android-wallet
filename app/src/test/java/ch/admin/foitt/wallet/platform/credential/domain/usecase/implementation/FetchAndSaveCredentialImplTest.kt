@@ -3,6 +3,7 @@ package ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation
 import android.annotation.SuppressLint
 import ch.admin.foitt.openid4vc.domain.model.DeferredCredential
 import ch.admin.foitt.openid4vc.domain.model.SigningAlgorithm
+import ch.admin.foitt.openid4vc.domain.model.TokenType
 import ch.admin.foitt.openid4vc.domain.model.VerifiableCredentialParams
 import ch.admin.foitt.openid4vc.domain.model.anycredential.AnyVerifiedCredential
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.CredentialOffer
@@ -10,18 +11,22 @@ import ch.admin.foitt.openid4vc.domain.model.credentialoffer.JWSKeyPair
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialFormat
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.IssuerCredentialInfo
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.RawAndParsedIssuerCredentialInfo
+import ch.admin.foitt.openid4vc.domain.model.jwt.Jwt
 import ch.admin.foitt.openid4vc.domain.model.keyBinding.BindingKeyPair
 import ch.admin.foitt.openid4vc.domain.model.keyBinding.KeyBinding
 import ch.admin.foitt.openid4vc.domain.model.keyBinding.KeyBindingType
+import ch.admin.foitt.openid4vc.domain.model.payloadEncryption.PayloadEncryption
 import ch.admin.foitt.openid4vc.domain.model.payloadEncryption.PayloadEncryptionKeyPair
-import ch.admin.foitt.openid4vc.domain.model.payloadEncryption.PayloadEncryptionType
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSdJwtCredential
 import ch.admin.foitt.openid4vc.domain.usecase.FetchCredentialByConfig
 import ch.admin.foitt.openid4vc.domain.usecase.FetchRawAndParsedIssuerCredentialInfo
+import ch.admin.foitt.openid4vc.domain.usecase.GetSignedMetadataDid
 import ch.admin.foitt.openid4vc.domain.usecase.GetVerifiableCredentialParams
 import ch.admin.foitt.wallet.platform.actorEnvironment.domain.model.ActorEnvironment
+import ch.admin.foitt.wallet.platform.actorEnvironment.domain.usecase.GetActorEnvironment
 import ch.admin.foitt.wallet.platform.credential.domain.model.CredentialError
 import ch.admin.foitt.wallet.platform.credential.domain.model.FetchCredentialResult
+import ch.admin.foitt.wallet.platform.credential.domain.usecase.EvaluateBatchSize
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.FetchAndSaveCredential
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.GetCredentialConfig
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.HandleBatchCredentialResult
@@ -30,15 +35,14 @@ import ch.admin.foitt.wallet.platform.credential.domain.usecase.HandleDeferredCr
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.ValidateIssuerCredentialInfo
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.CREDENTIAL_ISSUER
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.credentialConfig
+import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.mockIdentityJwt
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.multipleConfigCredentialInformation
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.multipleIdentifiersCredentialOffer
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.noConfigCredentialInformation
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.noIdentifierCredentialOffer
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.noMatchingIdentifierCredentialOffer
-import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.noPayloadEncryptionCredentialInformation
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.oneConfigCredentialInformation
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.oneIdentifierCredentialOffer
-import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.onlyRequestEncryptionCredentialInformation
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.proofTypeConfigHardwareBinding
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.proofTypeConfigSoftwareBinding
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.requestEncryption
@@ -50,13 +54,14 @@ import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.m
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.verifiableCredentialParamsSoftwareBinding
 import ch.admin.foitt.wallet.platform.environmentSetup.domain.repository.EnvironmentSetupRepository
 import ch.admin.foitt.wallet.platform.holderBinding.domain.model.HolderBindingError
+import ch.admin.foitt.wallet.platform.holderBinding.domain.usecase.GenerateDPoPKeyPair
 import ch.admin.foitt.wallet.platform.holderBinding.domain.usecase.GenerateProofKeyPairs
 import ch.admin.foitt.wallet.platform.payloadEncryption.domain.model.PayloadEncryptionError
-import ch.admin.foitt.wallet.platform.payloadEncryption.domain.usecase.GetPayloadEncryptionType
+import ch.admin.foitt.wallet.platform.payloadEncryption.domain.usecase.GetPayloadEncryption
 import ch.admin.foitt.wallet.platform.ssi.domain.repository.CredentialOfferRepository
-import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.IdentityV1TrustStatement
-import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.TrustCheckResult
-import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.VcSchemaTrustStatus
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.IdentityV2TrustStatement
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.TrustRegistryError
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.usecase.ProcessIdentityTrustStatement
 import ch.admin.foitt.wallet.util.assertErrorType
 import ch.admin.foitt.wallet.util.assertOk
 import ch.admin.foitt.wallet.util.assertSuccessType
@@ -72,6 +77,7 @@ import io.mockk.mockk
 import io.mockk.unmockkAll
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json.Default.parseToJsonElement
+import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -83,6 +89,12 @@ import ch.admin.foitt.openid4vc.domain.model.credentialoffer.CredentialOfferErro
 class FetchAndSaveCredentialImplTest {
     @MockK
     private lateinit var mockFetchRawAndParsedCredentialInfo: FetchRawAndParsedIssuerCredentialInfo
+
+    @MockK
+    private lateinit var mockGetSignedMetadataDid: GetSignedMetadataDid
+
+    @MockK
+    private lateinit var mockProcessIdentityTrustStatement: ProcessIdentityTrustStatement
 
     @MockK
     private lateinit var mockValidateIssuerCredentialInfo: ValidateIssuerCredentialInfo
@@ -106,16 +118,16 @@ class FetchAndSaveCredentialImplTest {
     private lateinit var mockVcSdJwtCredential: VcSdJwtCredential
 
     @MockK
-    private lateinit var mockIdentityTrustStatement: IdentityV1TrustStatement
+    private lateinit var mockIdentityTrustStatement: IdentityV2TrustStatement
 
     @MockK
-    private lateinit var mockTrustedTrustCheckResult: TrustCheckResult
-
-    @MockK
-    private lateinit var mockGetPayloadEncryptionType: GetPayloadEncryptionType
+    private lateinit var mockGetPayloadEncryption: GetPayloadEncryption
 
     @MockK
     private lateinit var mockGetCredentialConfig: GetCredentialConfig
+
+    @MockK
+    private lateinit var mockEvaluateBatchSize: EvaluateBatchSize
 
     @MockK
     private lateinit var mockHandleCredentialResult: HandleCredentialResult
@@ -126,6 +138,18 @@ class FetchAndSaveCredentialImplTest {
     @MockK
     private lateinit var mockHandleDeferredCredentialResult: HandleDeferredCredentialResult
 
+    @MockK
+    private lateinit var mockGenerateDPoPKeyPair: GenerateDPoPKeyPair
+
+    @MockK
+    private lateinit var mockGetActorEnvironment: GetActorEnvironment
+
+    @MockK
+    private lateinit var mockIssuerCredentialInfoJwt: Jwt
+
+    @MockK
+    private lateinit var mockAnyVerifiedCredential: AnyVerifiedCredential
+
     private lateinit var useCase: FetchAndSaveCredential
 
     @BeforeEach
@@ -134,16 +158,21 @@ class FetchAndSaveCredentialImplTest {
 
         useCase = FetchAndSaveCredentialImpl(
             fetchRawAndParsedIssuerCredentialInfo = mockFetchRawAndParsedCredentialInfo,
+            getSignedMetadataDid = mockGetSignedMetadataDid,
+            processIdentityTrustStatement = mockProcessIdentityTrustStatement,
             validateIssuerCredentialInfo = mockValidateIssuerCredentialInfo,
-            getPayloadEncryptionType = mockGetPayloadEncryptionType,
+            getPayloadEncryption = mockGetPayloadEncryption,
             getVerifiableCredentialParams = mockGetVerifiableCredentialParams,
             getCredentialConfig = mockGetCredentialConfig,
+            evaluateBatchSize = mockEvaluateBatchSize,
             generateProofKeyPairs = mockGenerateProofKeyPairs,
             fetchCredentialByConfig = mockFetchCredentialByConfig,
             handleCredentialResult = mockHandleCredentialResult,
             handleBatchCredentialResult = mockHandleBatchCredentialResult,
             handleDeferredCredentialResult = mockHandleDeferredCredentialResult,
             environmentSetupRepository = mockEnvironmentSetupRepository,
+            generateDPoPKeyPair = mockGenerateDPoPKeyPair,
+            getActorEnvironment = mockGetActorEnvironment,
         )
 
         setupDefaultMocks()
@@ -158,39 +187,44 @@ class FetchAndSaveCredentialImplTest {
     @SuppressLint("CheckResult")
     @Test
     fun `Fetching and saving the credential runs specific things`() = runTest {
-        setupDefaultMocks()
-
         val result = useCase(oneIdentifierCredentialOffer)
 
         val credentialId = result.assertSuccessType(FetchCredentialResult.Credential::class)
         assertEquals(CREDENTIAL_ID, credentialId.credentialId)
 
         coVerify {
-            mockFetchRawAndParsedCredentialInfo(issuerEndpoint = CREDENTIAL_ISSUER)
+            mockFetchRawAndParsedCredentialInfo(
+                issuerEndpoint = CREDENTIAL_ISSUER,
+                forceRefresh = true,
+            )
+            mockProcessIdentityTrustStatement(
+                identityTrustStatementJwt = mockIdentityJwt,
+                actorDid = ISSUER_DID,
+            )
             mockValidateIssuerCredentialInfo(oneConfigCredentialInformation)
-            mockGetPayloadEncryptionType(
+            mockGetPayloadEncryption(
                 requestEncryption = requestEncryption,
                 responseEncryption = responseEncryption,
             )
             mockGetVerifiableCredentialParams(
                 issuerCredentialInfo = oneConfigCredentialInformation,
                 credentialConfiguration = credentialConfig,
-                credentialOffer = oneIdentifierCredentialOffer
+                credentialOffer = oneIdentifierCredentialOffer,
             )
             mockGetVerifiableCredentialParams(
                 oneConfigCredentialInformation,
                 credentialConfig,
-                oneIdentifierCredentialOffer
+                oneIdentifierCredentialOffer,
             )
             mockFetchCredentialByConfig(
                 verifiableCredentialParams = verifiableCredentialParamsHardwareBinding,
                 bindingKeyPairs = listOf(
                     BindingKeyPair(
                         validHardwareKeyPair.keyPair,
-                        validHardwareKeyPair.attestationJwt
-                    )
+                        validHardwareKeyPair.attestationJwt,
+                    ),
                 ),
-                payloadEncryptionType = PayloadEncryptionType.Response(
+                payloadEncryption = PayloadEncryption(
                     requestEncryption = requestEncryption,
                     responseEncryption = responseEncryption,
                     responseEncryptionKeyPair = payloadEncryptionKeyPair,
@@ -198,7 +232,8 @@ class FetchAndSaveCredentialImplTest {
             )
             mockHandleCredentialResult(
                 issuerUrl = any(),
-                anyVerifiedCredential = AnyVerifiedCredential(mockVcSdJwtCredential),
+                anyVerifiedCredential = mockAnyVerifiedCredential,
+                identityTrustStatement = mockIdentityTrustStatement,
                 rawAndParsedCredentialInfo = any(),
                 credentialConfig = credentialConfig,
             )
@@ -255,56 +290,6 @@ class FetchAndSaveCredentialImplTest {
 
         val credentialResult = result.assertSuccessType(FetchCredentialResult.Credential::class)
         assertEquals(CREDENTIAL_ID, credentialResult.credentialId)
-    }
-
-    @Test
-    fun `Fetching and saving credential for information with only request encryption creates a payload encryption type 'request'`() = runTest {
-        setupDefaultMocks(
-            credentialInfo = onlyRequestEncryptionCredentialInformation,
-        )
-
-        val result = useCase(oneIdentifierCredentialOffer)
-
-        val credentialResult = result.assertSuccessType(FetchCredentialResult.Credential::class)
-        assertEquals(CREDENTIAL_ID, credentialResult.credentialId)
-
-        coVerify {
-            mockFetchCredentialByConfig(
-                verifiableCredentialParamsHardwareBinding,
-                listOf(
-                    BindingKeyPair(
-                        validHardwareKeyPair.keyPair,
-                        validHardwareKeyPair.attestationJwt
-                    )
-                ),
-                PayloadEncryptionType.Request(requestEncryption),
-            )
-        }
-    }
-
-    @Test
-    fun `Fetching and saving credential for information with no payload encryption creates a payload encryption type 'none'`() = runTest {
-        setupDefaultMocks(
-            credentialInfo = noPayloadEncryptionCredentialInformation,
-        )
-
-        val result = useCase(oneIdentifierCredentialOffer)
-
-        val credentialResult = result.assertSuccessType(FetchCredentialResult.Credential::class)
-        assertEquals(CREDENTIAL_ID, credentialResult.credentialId)
-
-        coVerify {
-            mockFetchCredentialByConfig(
-                verifiableCredentialParamsHardwareBinding,
-                listOf(
-                    BindingKeyPair(
-                        validHardwareKeyPair.keyPair,
-                        validHardwareKeyPair.attestationJwt
-                    )
-                ),
-                PayloadEncryptionType.None,
-            )
-        }
     }
 
     @Test
@@ -365,13 +350,36 @@ class FetchAndSaveCredentialImplTest {
     fun `Fetching and saving credential maps errors from Fetching issuer credential information`() = runTest {
         val exception = IllegalStateException()
         coEvery {
-            mockFetchRawAndParsedCredentialInfo(any())
+            mockFetchRawAndParsedCredentialInfo(any(), any())
         } returns Err(OpenIdCredentialOfferError.Unexpected(exception))
 
         val result = useCase(oneIdentifierCredentialOffer)
 
         val error = result.assertErrorType(CredentialError.Unexpected::class)
         assertEquals(exception, error.cause)
+    }
+
+    @Test
+    fun `Fetching and saving credential maps errors from getting the signed metadata did`() = runTest {
+        val exception = IllegalStateException()
+        coEvery {
+            mockGetSignedMetadataDid(any())
+        } returns Err(OpenIdCredentialOfferError.Unexpected(exception))
+
+        val result = useCase(oneIdentifierCredentialOffer)
+
+        val error = result.assertErrorType(CredentialError.Unexpected::class)
+        assertEquals(exception, error.cause)
+    }
+
+    @Test
+    fun `Fetching and saving credential maps errors from processing the identity trust statement to unverified verifier`() = runTest {
+        val exception = IllegalStateException()
+        coEvery {
+            mockProcessIdentityTrustStatement(any(), any())
+        } returns Err(TrustRegistryError.Unexpected(exception))
+
+        useCase(oneIdentifierCredentialOffer).assertErrorType(CredentialError.UnverifiedIssuer::class)
     }
 
     @Test
@@ -386,7 +394,7 @@ class FetchAndSaveCredentialImplTest {
     @Test
     fun `Fetching and saving credential maps errors from creating payload encryption type`() = runTest {
         coEvery {
-            mockGetPayloadEncryptionType(any(), any())
+            mockGetPayloadEncryption(any(), any())
         } returns Err(PayloadEncryptionError.IncompatibleDeviceProofKeyStorage)
 
         useCase(oneIdentifierCredentialOffer).assertErrorType(CredentialError.IncompatibleDeviceKeyStorage::class)
@@ -408,7 +416,7 @@ class FetchAndSaveCredentialImplTest {
         useCase(oneIdentifierCredentialOffer).assertOk()
 
         coVerify(exactly = 1) {
-            mockGenerateProofKeyPairs(1, proofTypeConfigHardwareBinding)
+            mockGenerateProofKeyPairs(1, proofTypeConfigHardwareBinding, ISSUER_DID)
         }
     }
 
@@ -419,7 +427,7 @@ class FetchAndSaveCredentialImplTest {
         useCase(oneIdentifierCredentialOffer).assertOk()
 
         coVerify(exactly = 1) {
-            mockGenerateProofKeyPairs(1, proofTypeConfigSoftwareBinding)
+            mockGenerateProofKeyPairs(1, proofTypeConfigSoftwareBinding, ISSUER_DID)
         }
     }
 
@@ -432,14 +440,14 @@ class FetchAndSaveCredentialImplTest {
         result.assertOk()
 
         coVerify(exactly = 0) {
-            mockGenerateProofKeyPairs(1, any())
+            mockGenerateProofKeyPairs(1, any(), any())
         }
     }
 
     @Test
     fun `Fetching and saving credential maps errors from generating the proof key pair`() = runTest {
         coEvery {
-            mockGenerateProofKeyPairs(1, any())
+            mockGenerateProofKeyPairs(1, any(), any())
         } returns Err(HolderBindingError.IncompatibleDeviceProofKeyStorage)
 
         useCase(oneIdentifierCredentialOffer).assertErrorType(CredentialError.IncompatibleDeviceKeyStorage::class)
@@ -449,8 +457,28 @@ class FetchAndSaveCredentialImplTest {
     fun `Fetching and saving credential maps errors from Fetching and saving credential by config`() = runTest {
         val exception = IllegalStateException()
         coEvery {
-            mockFetchCredentialByConfig(any(), any(), any())
+            mockFetchCredentialByConfig(any(), any(), any(), any())
         } returns Err(OpenIdCredentialOfferError.Unexpected(exception))
+
+        val result = useCase(oneIdentifierCredentialOffer)
+
+        val error = result.assertErrorType(CredentialError.Unexpected::class)
+        assertEquals(exception, error.cause)
+    }
+
+    @Test
+    fun `Fetching and saving credential where metadata did and credential did do not match returns an unverified verifier error`() = runTest {
+        every { mockVcSdJwtCredential.issuer } returns "other did"
+
+        useCase(oneIdentifierCredentialOffer).assertErrorType(CredentialError.UnverifiedIssuer::class)
+    }
+
+    @Test
+    fun `Fetching and saving credential maps errors from handling the credential result`() = runTest {
+        val exception = IllegalStateException("credential error")
+        coEvery {
+            mockHandleCredentialResult(any(), any(), any(), any(), any(), any())
+        } returns Err(CredentialError.Unexpected(exception))
 
         val result = useCase(oneIdentifierCredentialOffer)
 
@@ -464,7 +492,7 @@ class FetchAndSaveCredentialImplTest {
     @Test
     fun `Fetching and saving a deferred credential runs specific steps`() = runTest {
         coEvery {
-            mockFetchCredentialByConfig(any(), any(), any())
+            mockFetchCredentialByConfig(any(), any(), any(), any())
         } returns Ok(deferredCredential)
 
         val result = useCase(oneIdentifierCredentialOffer)
@@ -473,13 +501,16 @@ class FetchAndSaveCredentialImplTest {
         assertEquals(DEFERRED_CREDENTIAL_ID, deferredResult.credentialId)
 
         coVerifyOrder {
-            mockFetchRawAndParsedCredentialInfo(issuerEndpoint = CREDENTIAL_ISSUER)
+            mockFetchRawAndParsedCredentialInfo(
+                issuerEndpoint = CREDENTIAL_ISSUER,
+                forceRefresh = true,
+            )
             mockGetVerifiableCredentialParams(
                 issuerCredentialInfo = oneConfigCredentialInformation,
                 credentialConfiguration = credentialConfig,
                 credentialOffer = oneIdentifierCredentialOffer
             )
-            mockGenerateProofKeyPairs(1, proofTypeConfigHardwareBinding)
+            mockGenerateProofKeyPairs(1, proofTypeConfigHardwareBinding, ISSUER_DID)
             mockFetchCredentialByConfig(
                 verifiableCredentialParamsHardwareBinding,
                 listOf(
@@ -488,40 +519,39 @@ class FetchAndSaveCredentialImplTest {
                         validHardwareKeyPair.attestationJwt
                     )
                 ),
-                PayloadEncryptionType.Response(
+                PayloadEncryption(
                     requestEncryption = requestEncryption,
                     responseEncryption = responseEncryption,
                     responseEncryptionKeyPair = payloadEncryptionKeyPair,
                 ),
+                any(),
             )
             mockHandleDeferredCredentialResult(
                 issuerUrl = CREDENTIAL_ISSUER,
                 deferredCredential = deferredCredential,
                 rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
                     issuerCredentialInfo = oneConfigCredentialInformation,
-                    rawIssuerCredentialInfo = ""
+                    rawIssuerCredentialInfo = mockIssuerCredentialInfoJwt
                 ),
                 credentialConfig = credentialConfig,
             )
         }
     }
 
-    @SuppressLint("CheckResult")
     @Test
     fun `Errors from the saveDeferredCredentialOffer() call are mapped`() = runTest {
-        val exception = Exception("my exception")
-
         coEvery {
-            mockFetchCredentialByConfig(any(), any(), any())
+            mockFetchCredentialByConfig(any(), any(), any(), any())
         } returns Ok(deferredCredential)
 
+        val exception = Exception("my exception")
         coEvery {
             mockHandleDeferredCredentialResult(
                 issuerUrl = CREDENTIAL_ISSUER,
                 deferredCredential = deferredCredential,
                 rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
                     issuerCredentialInfo = oneConfigCredentialInformation,
-                    rawIssuerCredentialInfo = ""
+                    rawIssuerCredentialInfo = mockIssuerCredentialInfoJwt
                 ),
                 credentialConfig = credentialConfig,
             )
@@ -531,11 +561,10 @@ class FetchAndSaveCredentialImplTest {
         assertEquals(exception.message, error.cause?.message)
     }
 
-    @SuppressLint("CheckResult")
     @Test
     fun `A deferred credential without key binding is accepted`() = runTest {
         coEvery {
-            mockFetchCredentialByConfig(any(), any(), any())
+            mockFetchCredentialByConfig(any(), any(), any(), any())
         } returns Ok(deferredCredential.copy(keyBindings = null))
 
         val result = useCase(oneIdentifierCredentialOffer)
@@ -543,18 +572,37 @@ class FetchAndSaveCredentialImplTest {
         val deferredResult = result.assertSuccessType(FetchCredentialResult.DeferredCredential::class)
         assertEquals(DEFERRED_CREDENTIAL_ID, deferredResult.credentialId)
     }
+
+    @Test
+    fun `Fetching and saving credential maps errors from handling the deferred credential result`() = runTest {
+        coEvery {
+            mockFetchCredentialByConfig(any(), any(), any(), any())
+        } returns Ok(deferredCredential)
+
+        val exception = IllegalStateException("credential error")
+        coEvery {
+            mockHandleDeferredCredentialResult(any(), any(), any(), any())
+        } returns Err(CredentialError.Unexpected(exception))
+
+        val result = useCase(oneIdentifierCredentialOffer)
+
+        val error = result.assertErrorType(CredentialError.Unexpected::class)
+        assertEquals(exception, error.cause)
+    }
     //endregion
 
     @Test
-    fun `With disabled payload encryption the corresponding use cases are not called`() = runTest {
-        coEvery { mockEnvironmentSetupRepository.payloadEncryptionEnabled } returns false
+    fun `Issuer with EXTERNAL actor environment returns UnknownRegistry error`() = runTest {
+        coEvery { mockGetActorEnvironment(any()) } returns ActorEnvironment.EXTERNAL
 
-        useCase(oneIdentifierCredentialOffer).assertSuccessType(FetchCredentialResult.Credential::class)
+        useCase(oneIdentifierCredentialOffer).assertErrorType(CredentialError.UnknownRegistry::class)
+    }
 
-        coVerify(exactly = 0) {
-            mockValidateIssuerCredentialInfo(any())
-            mockGetPayloadEncryptionType(any(), any())
-        }
+    @Test
+    fun `Issuer with BETA actor environment returns Ok`() = runTest {
+        coEvery { mockGetActorEnvironment(any()) } returns ActorEnvironment.BETA
+
+        useCase(oneIdentifierCredentialOffer).assertOk()
     }
 
     private fun setupDefaultMocks(
@@ -564,7 +612,7 @@ class FetchAndSaveCredentialImplTest {
     ) {
         every {
             mockVcSdJwtCredential.getClaimsForPresentation()
-        } returns parseToJsonElement(CREDENTIAL_CLAIMS_FOR_PRESENTATION)
+        } returns parseToJsonElement(CREDENTIAL_CLAIMS_FOR_PRESENTATION).jsonObject
         every { mockVcSdJwtCredential.issuer } returns ISSUER_DID
         every { mockVcSdJwtCredential.vcSchemaId } returns VC_SCHEMA_ID
         coEvery { mockVcSdJwtCredential.keyBinding } returns keyBinding
@@ -573,27 +621,38 @@ class FetchAndSaveCredentialImplTest {
         coEvery { mockVcSdJwtCredential.validFromInstant } returns VC_VALID_FROM
         coEvery { mockVcSdJwtCredential.validUntilInstant } returns VC_VALID_UNTIL
 
+        every { mockIssuerCredentialInfoJwt.payloadString } returns RAW_ISSUER_INFO_JWT
+
         coEvery {
-            mockFetchRawAndParsedCredentialInfo(issuerEndpoint = CREDENTIAL_ISSUER)
-        } returns Ok(RawAndParsedIssuerCredentialInfo(issuerCredentialInfo = credentialInfo, rawIssuerCredentialInfo = ""))
+            mockFetchRawAndParsedCredentialInfo(
+                issuerEndpoint = CREDENTIAL_ISSUER,
+                forceRefresh = true,
+            )
+        } returns Ok(
+            RawAndParsedIssuerCredentialInfo(
+                issuerCredentialInfo = credentialInfo,
+                rawIssuerCredentialInfo = mockIssuerCredentialInfoJwt
+            )
+        )
+
+        coEvery {
+            mockGetSignedMetadataDid(mockIssuerCredentialInfoJwt)
+        } returns Ok(ISSUER_DID)
+
+        every { mockIdentityTrustStatement.kid } returns KEY_ID
+
+        coEvery {
+            mockProcessIdentityTrustStatement(identityTrustStatementJwt = mockIdentityJwt, actorDid = ISSUER_DID)
+        } returns Ok(mockIdentityTrustStatement)
 
         coEvery { mockValidateIssuerCredentialInfo(credentialInfo) } returns true
 
-        coEvery { mockEnvironmentSetupRepository.payloadEncryptionEnabled } returns true
         coEvery { mockEnvironmentSetupRepository.batchIssuanceEnabled } returns false
 
         coEvery {
-            mockGetPayloadEncryptionType(null, null)
-        } returns Ok(PayloadEncryptionType.None)
-
-        coEvery {
-            mockGetPayloadEncryptionType(requestEncryption, null)
-        } returns Ok(PayloadEncryptionType.Request(requestEncryption))
-
-        coEvery {
-            mockGetPayloadEncryptionType(requestEncryption, responseEncryption)
+            mockGetPayloadEncryption(requestEncryption, responseEncryption)
         } returns Ok(
-            PayloadEncryptionType.Response(
+            PayloadEncryption(
                 requestEncryption = requestEncryption,
                 responseEncryption = responseEncryption,
                 responseEncryptionKeyPair = payloadEncryptionKeyPair,
@@ -609,24 +668,6 @@ class FetchAndSaveCredentialImplTest {
         } returns Ok(verifiableCredentialParams)
 
         coEvery {
-            mockGetPayloadEncryptionType(
-                requestEncryption = requestEncryption,
-                responseEncryption = null,
-            )
-        } returns Ok(
-            PayloadEncryptionType.Request(
-                requestEncryption = requestEncryption,
-            )
-        )
-
-        coEvery {
-            mockGetPayloadEncryptionType(
-                requestEncryption = null,
-                responseEncryption = null,
-            )
-        } returns Ok(PayloadEncryptionType.None)
-
-        coEvery {
             mockGetCredentialConfig(
                 credentials = credentialOffer.credentialConfigurationIds,
                 credentialConfigurations = credentialInfo.credentialConfigurations
@@ -635,7 +676,7 @@ class FetchAndSaveCredentialImplTest {
 
         coEvery {
             mockHandleCredentialResult(
-                any(), any(), any(), any()
+                any(), any(), any(), any(), any(), any()
             )
         } returns Ok(FetchCredentialResult.Credential(CREDENTIAL_ID))
 
@@ -645,16 +686,16 @@ class FetchAndSaveCredentialImplTest {
             )
         } returns Ok(FetchCredentialResult.DeferredCredential(DEFERRED_CREDENTIAL_ID))
 
-        coEvery { mockGenerateProofKeyPairs(1, proofTypeConfigHardwareBinding) } returns Ok(listOf(validHardwareKeyPair))
-        coEvery { mockGenerateProofKeyPairs(1, proofTypeConfigSoftwareBinding) } returns Ok(listOf(validSoftwareKeyPair))
+        coEvery {
+            mockGenerateProofKeyPairs(1, proofTypeConfigHardwareBinding, ISSUER_DID)
+        } returns Ok(listOf(validHardwareKeyPair))
+        coEvery {
+            mockGenerateProofKeyPairs(1, proofTypeConfigSoftwareBinding, ISSUER_DID)
+        } returns Ok(listOf(validSoftwareKeyPair))
 
         coEvery {
-            mockFetchCredentialByConfig(any(), any(), any())
-        } returns Ok(AnyVerifiedCredential(mockVcSdJwtCredential))
-
-        coEvery { mockTrustedTrustCheckResult.actorTrustStatement } returns mockIdentityTrustStatement
-        coEvery { mockTrustedTrustCheckResult.actorEnvironment } returns ActorEnvironment.PRODUCTION
-        coEvery { mockTrustedTrustCheckResult.vcSchemaTrustStatus } returns VcSchemaTrustStatus.TRUSTED
+            mockFetchCredentialByConfig(any(), any(), any(), any())
+        } returns Ok(mockAnyVerifiedCredential)
 
         coEvery {
             mockCredentialOfferRepository.saveCredentialOffer(
@@ -677,6 +718,8 @@ class FetchAndSaveCredentialImplTest {
             mockCredentialOfferRepository.saveDeferredCredentialOffer(
                 transactionId = any(),
                 accessToken = any(),
+                tokenType = any(),
+                dpopKeyBinding = any(),
                 endpoint = any(),
                 pollInterval = any(),
                 keyBindings = any(),
@@ -689,6 +732,12 @@ class FetchAndSaveCredentialImplTest {
                 refreshToken = any(),
             )
         } returns Ok(DEFERRED_CREDENTIAL_ID)
+
+        coEvery { mockGenerateDPoPKeyPair(any(), ISSUER_DID) } returns Ok(null)
+
+        coEvery { mockGetActorEnvironment(any()) } returns ActorEnvironment.PRODUCTION
+
+        coEvery { mockAnyVerifiedCredential.vcSdJwtCredential } returns mockVcSdJwtCredential
     }
 
     private companion object {
@@ -700,12 +749,15 @@ class FetchAndSaveCredentialImplTest {
             }
         """.trimIndent()
         const val ISSUER_DID = "issuer did"
+        const val KEY_ID = "keyId"
         const val VC_SCHEMA_ID = "vcSchemaId"
         const val VC_PAYLOAD = "payload"
         val VC_FORMAT = CredentialFormat.VC_SD_JWT
         val VC_VALID_FROM: Instant = Instant.ofEpochSecond(0)
         val VC_VALID_UNTIL: Instant = Instant.ofEpochSecond(100)
 
+        const val RAW_ISSUER_INFO_JWT =
+            "eyJhbGciOiJFUzI1NiIsImtpZCI6ImtleUlkIn0.eyJzb21lQ2xhaW0iOiJzb21lVmFsdWUifQ.squXfPeA3JtaVfnhQ35ThpCW-voZCByc6mvxQmH3zY4REanpybWAAjQ_EVlxDkOgRIv0Akuuu81uoaJof3BWoA"
         private val keyBinding = KeyBinding(
             identifier = "keyId",
             algorithm = SigningAlgorithm.ES512,
@@ -717,9 +769,11 @@ class FetchAndSaveCredentialImplTest {
             keyBindings = listOf(keyBinding),
             transactionId = "transactionId",
             accessToken = "accessToken",
+            tokenType = TokenType.BEARER,
             endpoint = URL("https://example"),
             pollInterval = 1,
             refreshToken = "refreshToken",
+            dpopKeyBinding = null,
         )
 
         val mockPayloadEncryptionJwsKeyPair = mockk<JWSKeyPair>()

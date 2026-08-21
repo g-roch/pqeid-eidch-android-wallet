@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,30 +21,40 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.admin.foitt.wallet.R
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.composables.DocumentScanOverlay
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.composables.LoadingContent
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.composables.OrientationLocker
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.composables.ScannerButton
-import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.composables.ScannerButtonState
+import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.composables.ScannerButtonAltTexts
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.composables.ScannerCamera
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.composables.ScannerInfoBox
+import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.documentRecording.DocumentRecordingScannerEvent
+import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.documentRecording.EIdDocumentRecordingStatus
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.documentRecording.EIdDocumentRecordingUiState
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.documentScanner.DocumentScannerErrorContent
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.model.DocumentTypeDrawable
-import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.model.SDKInfoState
-import ch.admin.foitt.wallet.platform.composables.LoadingOverlay
+import ch.admin.foitt.wallet.platform.cameraPermissionHandler.domain.model.OnPermissionResult
+import ch.admin.foitt.wallet.platform.cameraPermissionHandler.domain.model.PermissionState
+import ch.admin.foitt.wallet.platform.cameraPermissionHandler.presentation.CameraPermissionWrapper
 import ch.admin.foitt.wallet.platform.composables.presentation.WindowWidthClass
 import ch.admin.foitt.wallet.platform.composables.presentation.addTopScaffoldPadding
 import ch.admin.foitt.wallet.platform.composables.presentation.bottomSafeDrawing
 import ch.admin.foitt.wallet.platform.composables.presentation.windowWidthClass
-import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.model.IdentityType
+import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.model.EIdUiDocumentType
 import ch.admin.foitt.wallet.platform.preview.WalletAllScreenPreview
 import ch.admin.foitt.wallet.platform.utils.LocalActivity
 import ch.admin.foitt.wallet.platform.utils.OnPauseEventHandler
 import ch.admin.foitt.wallet.platform.utils.OnResumeEventHandler
+import ch.admin.foitt.wallet.platform.utils.RepeatOnLifeCycleHandler
+import ch.admin.foitt.wallet.platform.utils.TraversalIndex
+import ch.admin.foitt.wallet.platform.utils.setIsTraversalGroup
+import ch.admin.foitt.wallet.platform.utils.traversalIndex
 import ch.admin.foitt.wallet.theme.Sizes
 import ch.admin.foitt.wallet.theme.WalletTheme
 
@@ -53,71 +63,79 @@ fun EIdDocumentRecordingScreen(
     viewModel: EIdDocumentRecordingViewModel,
 ) {
     val currentActivity = LocalActivity.current
-
+    val haptic = LocalHapticFeedback.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val documentType by viewModel.documentType.collectAsStateWithLifecycle()
     val shouldLock by viewModel.shouldLock.collectAsStateWithLifecycle()
-
-    val documentTypeDrawables = remember(documentType) {
-        when (documentType) {
-            IdentityType.SWISS_PASS -> DocumentTypeDrawable(
-                front = R.drawable.wallet_passport_front_overlay,
-                back = R.drawable.wallet_passport_back_overlay
-            )
-
-            else -> DocumentTypeDrawable(
-                front = R.drawable.wallet_id_card_front_overlay,
-                back = R.drawable.wallet_id_card_back_overlay
-            )
-        }
-    }
+    val permissionState by viewModel.permissionState.collectAsStateWithLifecycle()
 
     OnResumeEventHandler(viewModel::onResume)
     OnPauseEventHandler(viewModel::onPause)
-    BackHandler(enabled = true, viewModel::onUp)
+    BackHandler(onBack = viewModel::onUp)
+
+    RepeatOnLifeCycleHandler {
+        viewModel.updateTopBarState(this)
+    }
+
+    LaunchedEffect(permissionState) {
+        if (permissionState is PermissionState.Granted) {
+            viewModel.initScannerSdk(currentActivity)
+        }
+    }
 
     LaunchedEffect(viewModel) {
-        viewModel.initScannerSdk(currentActivity)
+        viewModel.hapticEvent.collect { event ->
+            when (event) {
+                is DocumentRecordingScannerEvent.ScanDone -> {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
+            }
+        }
     }
 
     OrientationLocker(currentActivity, shouldLock)
 
     EIdDocumentRecordingScreenContent(
         uiState = uiState,
-        isLoading = viewModel.isLoading.collectAsStateWithLifecycle().value,
-        documentTypeDrawables = documentTypeDrawables,
+        permissionState = permissionState,
+        documentType = documentType,
         getScannerView = viewModel::getScannerView,
         onAfterViewLayout = viewModel::onAfterViewLayout,
         onToggleScan = viewModel::onToggleScan,
+        onPermissionResult = viewModel.onPermissionResult,
     )
 }
 
 @Composable
 private fun EIdDocumentRecordingScreenContent(
     uiState: EIdDocumentRecordingUiState,
-    isLoading: Boolean,
-    documentTypeDrawables: DocumentTypeDrawable,
+    permissionState: PermissionState,
+    documentType: EIdUiDocumentType,
     getScannerView: suspend (width: Int, height: Int) -> View,
     onAfterViewLayout: (width: Int, height: Int) -> Unit,
     onToggleScan: () -> Unit,
+    onPermissionResult: OnPermissionResult,
+) = CameraPermissionWrapper(
+    permissionState = permissionState,
+    onCameraPermissionResult = onPermissionResult,
 ) {
     when (uiState) {
         is EIdDocumentRecordingUiState.Error -> DocumentScannerErrorContent(
-            onRetry = uiState.onRetry,
+            onButton = uiState.onButton,
             onHelp = uiState.onHelp,
             type = uiState.type,
+            title = uiState.title,
+            content = uiState.content,
+            buttonText = uiState.buttonText,
         )
 
         EIdDocumentRecordingUiState.Initializing -> LoadingContent()
 
         is EIdDocumentRecordingUiState.Recording -> {
             EIdDocumentRecordingContent(
-                infoState = uiState.infoState,
                 infoText = uiState.infoText,
-                showSecondSide = uiState.showSecondSide,
-                isLoading = isLoading,
-                documentTypeDrawables = documentTypeDrawables,
-                scannerButtonState = uiState.scannerButtonState,
+                status = uiState.status,
+                documentType = documentType,
                 getScannerView = getScannerView,
                 onAfterViewLayout = onAfterViewLayout,
                 onToggleScan = onToggleScan,
@@ -128,22 +146,25 @@ private fun EIdDocumentRecordingScreenContent(
 
 @Composable
 private fun EIdDocumentRecordingContent(
-    infoState: SDKInfoState,
     infoText: Int?,
-    showSecondSide: Boolean,
-    isLoading: Boolean,
-    documentTypeDrawables: DocumentTypeDrawable,
-    scannerButtonState: ScannerButtonState,
+    status: EIdDocumentRecordingStatus,
+    documentType: EIdUiDocumentType,
     getScannerView: suspend (width: Int, height: Int) -> View,
     onAfterViewLayout: (width: Int, height: Int) -> Unit,
     onToggleScan: () -> Unit,
 ) {
+    val documentTypeDrawables by remember(documentType) {
+        mutableStateOf(getDocumentTypeDrawables(documentType))
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
     ) {
         BoxWithConstraints(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .setIsTraversalGroup()
         ) {
             ScannerCamera(
                 containerWidth = constraints.maxWidth,
@@ -152,13 +173,13 @@ private fun EIdDocumentRecordingContent(
                 onAfterViewLayout = onAfterViewLayout,
             )
 
-            val windowWidthClass = currentWindowAdaptiveInfo().windowWidthClass()
+            val windowWidthClass = currentWindowAdaptiveInfoV2().windowWidthClass()
             val isCompact = windowWidthClass == WindowWidthClass.COMPACT
 
-            if (!isLoading && scannerButtonState != ScannerButtonState.Done) {
+            if (status != EIdDocumentRecordingStatus.Initializing && status != EIdDocumentRecordingStatus.Finished) {
                 DocumentScanOverlay(
                     documentTypeDrawables = documentTypeDrawables,
-                    showBackside = showSecondSide,
+                    showBackside = status.shouldShowOverlayBackside,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .then(
@@ -175,7 +196,15 @@ private fun EIdDocumentRecordingContent(
 
             ScannerButton(
                 onClick = onToggleScan,
-                state = scannerButtonState,
+                state = status.toScannerButtonState(),
+                stateTexts = ScannerButtonAltTexts(
+                    done = stringResource(R.string.tk_eidRequest_recordDocument_controlButton_done_alt),
+                    ready = stringResource(
+                        R.string.tk_eidRequest_recordDocument_controlButton_start_alt,
+                        EIdDocumentRecordingViewModel.VIDEO_LENGTH_SECONDS,
+                    ),
+                    scanning = stringResource(R.string.tk_eidRequest_recordDocument_controlButton_stop_alt),
+                ),
                 modifier = Modifier
                     .windowInsetsPadding(
                         WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
@@ -195,9 +224,9 @@ private fun EIdDocumentRecordingContent(
             )
 
             ScannerInfoBox(
-                infoState = infoState,
                 infoText = infoText,
                 modifier = Modifier
+                    .traversalIndex(TraversalIndex.LAST)
                     .then(
                         if (isCompact) {
                             Modifier
@@ -209,10 +238,21 @@ private fun EIdDocumentRecordingContent(
                     .addTopScaffoldPadding()
                     .align(Alignment.TopCenter)
             )
-
-            LoadingOverlay(isLoading)
         }
     }
+}
+
+private fun getDocumentTypeDrawables(documentType: EIdUiDocumentType) = when (documentType) {
+    EIdUiDocumentType.PASSPORT -> DocumentTypeDrawable(
+        front = R.drawable.wallet_passport_front_overlay,
+        back = R.drawable.wallet_passport_back_overlay
+    )
+
+    EIdUiDocumentType.IDENTITY_CARD,
+    EIdUiDocumentType.RESIDENT_PERMIT -> DocumentTypeDrawable(
+        front = R.drawable.wallet_id_card_front_overlay,
+        back = R.drawable.wallet_id_card_back_overlay
+    )
 }
 
 @WalletAllScreenPreview
@@ -222,10 +262,8 @@ private fun EIdDocumentRecordingScreenContentPreview() {
         var uiState by remember {
             mutableStateOf(
                 EIdDocumentRecordingUiState.Recording(
-                    infoState = SDKInfoState.InfoData,
                     infoText = R.string.avbeam_error_unknown,
-                    scannerButtonState = ScannerButtonState.Ready,
-                    showSecondSide = false
+                    status = EIdDocumentRecordingStatus.FrontSide,
                 )
             )
         }
@@ -233,16 +271,12 @@ private fun EIdDocumentRecordingScreenContentPreview() {
         val currentContext = LocalContext.current
         EIdDocumentRecordingScreenContent(
             uiState = uiState,
-            isLoading = false,
-            documentTypeDrawables = DocumentTypeDrawable(
-                front = R.drawable.wallet_id_card_front_overlay,
-                back = R.drawable.wallet_id_card_back_overlay
-            ),
+            permissionState = PermissionState.Granted,
+            documentType = EIdUiDocumentType.PASSPORT,
             getScannerView = { _, _ -> View(currentContext) },
             onAfterViewLayout = { _, _ -> },
-            onToggleScan = {
-                uiState = uiState.copy(showSecondSide = !uiState.showSecondSide)
-            }
+            onToggleScan = {},
+            onPermissionResult = { _, _, _ -> },
         )
     }
 }

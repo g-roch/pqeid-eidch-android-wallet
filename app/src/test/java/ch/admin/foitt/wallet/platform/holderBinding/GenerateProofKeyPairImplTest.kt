@@ -67,10 +67,10 @@ class GenerateProofKeyPairImplTest {
             SigningAlgorithm.ES256
         )
         coEvery {
-            mockRequestKeyAttestation(null, SigningAlgorithm.ES256, any())
+            mockRequestKeyAttestation(ACTOR_DID, null, SigningAlgorithm.ES256, any())
         } returns Ok(KeyAttestation(validKeyPairES256Hardware, mockKeyAttestationJwt))
         coEvery {
-            mockRequestKeyAttestation(null, SigningAlgorithm.ES512, any())
+            mockRequestKeyAttestation(ACTOR_DID, null, SigningAlgorithm.ES512, any())
         } returns Ok(KeyAttestation(validKeyPairES512, mockKeyAttestationJwt))
         coEvery { mockCreateJWSKeyPairInSoftware(SigningAlgorithm.ES256) } returns Ok(
             validKeyPairES256Software
@@ -87,7 +87,7 @@ class GenerateProofKeyPairImplTest {
 
     @Test
     fun `valid supported credential with software binding returns key pair with software type`() = runTest {
-        val result = spyGenerateProofKeyPairs(1, proofTypeConfigSoftwareBinding).assertOk().first()
+        val result = spyGenerateProofKeyPairs(1, proofTypeConfigSoftwareBinding, ACTOR_DID).assertOk().first()
 
         assertEquals(validKeyPairES256Software, result.keyPair)
         assertNull(result.attestationJwt)
@@ -101,13 +101,14 @@ class GenerateProofKeyPairImplTest {
 
     @Test
     fun `valid supported credential with hardware binding returns key pair`() = runTest {
-        val result = spyGenerateProofKeyPairs(1, proofTypeConfigHardwareBinding).assertOk().first()
+        val result = spyGenerateProofKeyPairs(1, proofTypeConfigHardwareBinding, ACTOR_DID).assertOk().first()
 
         assertEquals(validKeyPairES256Hardware, result.keyPair)
         assertEquals(mockKeyAttestationJwt, result.attestationJwt)
 
         coVerify(exactly = 1) {
             mockRequestKeyAttestation(
+                actorDid = ACTOR_DID,
                 keyAlias = null,
                 signingAlgorithm = SigningAlgorithm.ES256,
                 keyStorageSecurityLevels = strongboxKeyStorage,
@@ -126,7 +127,7 @@ class GenerateProofKeyPairImplTest {
             spyGenerateProofKeyPairs["getPreferredSigningAlgorithms"]()
         } returns appAlgorithms
 
-        val result = spyGenerateProofKeyPairs(1, ProofTypeConfig(issuerAlgorithms)).assertOk().first()
+        val result = spyGenerateProofKeyPairs(1, ProofTypeConfig(issuerAlgorithms), ACTOR_DID).assertOk().first()
 
         assertEquals(expected, result.keyPair.algorithm)
         assertEquals(KeyBindingType.SOFTWARE, result.keyPair.bindingType)
@@ -148,11 +149,12 @@ class GenerateProofKeyPairImplTest {
 
             spyGenerateProofKeyPairs(
                 1,
-                proofTypeConfigSoftwareBinding
+                proofTypeConfigSoftwareBinding,
+                ACTOR_DID,
             ).assertErrorType(HolderBindingError.UnsupportedCryptographicSuite::class)
 
             coVerify(exactly = 0) {
-                mockRequestKeyAttestation(null, SigningAlgorithm.ES256, any())
+                mockRequestKeyAttestation(ACTOR_DID, null, SigningAlgorithm.ES256, any())
             }
         }
 
@@ -160,10 +162,10 @@ class GenerateProofKeyPairImplTest {
     fun `Generate key pair maps errors from createJWSKeyPair`() = runTest {
         val exception = IllegalStateException("error when creating key pair")
         coEvery {
-            mockRequestKeyAttestation(any(), any(), any())
+            mockRequestKeyAttestation(any(), any(), any(), any())
         } returns Err(AttestationError.Unexpected(exception))
 
-        spyGenerateProofKeyPairs(1, proofTypeConfigHardwareBinding).assertErrorType(HolderBindingError.Unexpected::class)
+        spyGenerateProofKeyPairs(1, proofTypeConfigHardwareBinding, ACTOR_DID).assertErrorType(HolderBindingError.Unexpected::class)
     }
 
     @Test
@@ -173,10 +175,12 @@ class GenerateProofKeyPairImplTest {
             mockCreateJWSKeyPairInSoftware(any())
         } returns Err(KeyPairError.Unexpected(exception))
 
-        spyGenerateProofKeyPairs(1, proofTypeConfigSoftwareBinding).assertErrorType(HolderBindingError.Unexpected::class)
+        spyGenerateProofKeyPairs(1, proofTypeConfigSoftwareBinding, ACTOR_DID).assertErrorType(HolderBindingError.Unexpected::class)
     }
 
     private companion object {
+        const val ACTOR_DID = "actor did"
+
         @JvmStatic
         fun generateSigningAlgorithmInputs(): Stream<Arguments> = Stream.of(
             // Argument(issuer algorithms, app algorithms, expected result)

@@ -16,17 +16,21 @@ sealed interface NonComplianceError {
     data object NetworkError : SendNonComplianceReportError
     data class Unexpected(val throwable: Throwable?) :
         NonComplianceRepositoryError,
-        FetchNonComplianceDataError,
-        SendNonComplianceReportError
+        SendNonComplianceReportError,
+        GetNonComplianceReportingDataError
 }
 
-sealed interface FetchNonComplianceDataError
 sealed interface NonComplianceRepositoryError
 sealed interface SendNonComplianceReportError
+sealed interface GetNonComplianceReportingDataError
 
 fun Throwable.toNonComplianceRepositoryError(message: String): NonComplianceRepositoryError {
     Timber.e(t = this, message = message)
     return NonComplianceError.Unexpected(this)
+}
+
+fun JsonParsingError.toNonComplianceRepositoryError(): NonComplianceRepositoryError = when (this) {
+    is JsonError.Unexpected -> NonComplianceError.Unexpected(throwable)
 }
 
 fun NonComplianceRepositoryError.toSendNonComplianceReportError(): SendNonComplianceReportError = when (this) {
@@ -40,6 +44,7 @@ fun JsonParsingError.toSendNonComplianceReportError(): SendNonComplianceReportEr
 internal fun RequestClientAttestationError.toSendNonComplianceReportError(): SendNonComplianceReportError = when (this) {
     is AttestationError.ValidationError -> NonComplianceError.InvalidClientAttestation
     is AttestationError.NetworkError -> NonComplianceError.NetworkError
+    AttestationError.SocketTimeoutError -> NonComplianceError.Unexpected(null)
     is AttestationError.Unexpected -> NonComplianceError.Unexpected(throwable)
 }
 

@@ -1,6 +1,6 @@
 package ch.admin.foitt.wallet.feature.otp.data.repository
 
-import ch.admin.foitt.openid4vc.di.ExternalOpenId4VcModule.Companion.NAMED_DEFAULT_HTTP_CLIENT
+import ch.admin.foitt.openid4vc.di.OpenId4VcModule.Companion.NAMED_DEFAULT_HTTP_CLIENT
 import ch.admin.foitt.wallet.feature.otp.domain.model.OtpRequest
 import ch.admin.foitt.wallet.feature.otp.domain.model.OtpVerify
 import ch.admin.foitt.wallet.feature.otp.domain.model.RequestOtpError
@@ -35,7 +35,7 @@ class OtpRepositoryImpl @Inject constructor(
         clientAttestationPoP: ClientAttestationPoP,
         otpRequest: OtpRequest,
     ): Result<Unit, RequestOtpError> = runSuspendCatching<Unit> {
-        httpClient.post(environmentSetupRepo.attestationsServiceUrl + "/otp/request") {
+        httpClient.post(environmentSetupRepo.defaultAttestationServiceUrl + "/otp/request") {
             header(ClientAttestation.REQUEST_HEADER, clientAttestation.attestation.rawJwt)
             header(ClientAttestationPoP.REQUEST_HEADER, clientAttestationPoP.value)
             header(HttpHeaders.AcceptLanguage, getCurrentAppLocale())
@@ -51,7 +51,7 @@ class OtpRepositoryImpl @Inject constructor(
         clientAttestationPoP: ClientAttestationPoP,
         otpVerify: OtpVerify,
     ): Result<Unit, RequestOtpError> = runSuspendCatching<Unit> {
-        httpClient.post(environmentSetupRepo.attestationsServiceUrl + "/otp/verify") {
+        httpClient.post(environmentSetupRepo.defaultAttestationServiceUrl + "/otp/verify") {
             header(ClientAttestation.REQUEST_HEADER, clientAttestation.attestation.rawJwt)
             header(ClientAttestationPoP.REQUEST_HEADER, clientAttestationPoP.value)
             contentType(ContentType.Application.Json)

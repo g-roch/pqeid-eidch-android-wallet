@@ -5,7 +5,7 @@ import ch.admin.foitt.openid4vc.domain.model.anycredential.AnyCredentialResult
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.CredentialOfferError
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialFormat
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.VcSdJwtCredentialConfiguration
-import ch.admin.foitt.openid4vc.domain.model.payloadEncryption.PayloadEncryptionType
+import ch.admin.foitt.openid4vc.domain.model.payloadEncryption.PayloadEncryption
 import ch.admin.foitt.openid4vc.domain.usecase.FetchCredentialByConfig
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.FetchVcSdJwtCredential
 import ch.admin.foitt.openid4vc.util.assertErrorType
@@ -38,7 +38,7 @@ class FetchCredentialByConfigImplTest {
     private lateinit var mockVerifiableCredentialParams: VerifiableCredentialParams
 
     @MockK
-    private lateinit var mockPayloadEncryptionType: PayloadEncryptionType
+    private lateinit var mockPayloadEncryptionType: PayloadEncryption
 
     private lateinit var useCase: FetchCredentialByConfig
 

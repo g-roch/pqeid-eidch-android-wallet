@@ -37,16 +37,14 @@ class GetCredentialsWithDetailsFlowImpl @Inject constructor(
         credentials: List<VerifiableCredentialWithDisplaysAndClusters>
     ): Result<List<CredentialDisplayData>, GetCredentialsWithDetailsFlowError> = coroutineBinding {
         credentials.map { verifiableCredentialWithDetail ->
-            val cluster = verifiableCredentialWithDetail.clusters.first()
-
-            val credentialDisplayData = mapToCredentialDisplayData(
+            mapToCredentialDisplayData(
                 verifiableCredential = verifiableCredentialWithDetail.verifiableCredential,
                 credentialDisplays = verifiableCredentialWithDetail.credentialDisplays,
-                claims = cluster.claimsWithDisplays
+                claims = verifiableCredentialWithDetail.clusters.flatMap { it.claimsWithDisplays },
+                credentialFormat = verifiableCredentialWithDetail.credential.format,
+                status = verifiableCredentialWithDetail.nextPresentableStatus,
             ).mapError(MapToCredentialDisplayDataError::toGetCredentialsWithDisplaysFlowError)
                 .bind()
-
-            credentialDisplayData
         }
     }
 }

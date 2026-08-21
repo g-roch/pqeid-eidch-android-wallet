@@ -13,6 +13,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -24,12 +25,14 @@ import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import ch.admin.foitt.wallet.R
 import ch.admin.foitt.wallet.platform.badges.presentation.model.BadgeBottomSheetUiState
-import ch.admin.foitt.wallet.platform.composables.presentation.ClusterListItem
+import ch.admin.foitt.wallet.platform.composables.Avatar
+import ch.admin.foitt.wallet.platform.composables.AvatarSize
 import ch.admin.foitt.wallet.platform.composables.presentation.spaceBarKeyClickable
 import ch.admin.foitt.wallet.platform.preview.WalletComponentPreview
 import ch.admin.foitt.wallet.platform.utils.TraversalIndex
 import ch.admin.foitt.wallet.platform.utils.setIsTraversalGroup
 import ch.admin.foitt.wallet.theme.Sizes
+import ch.admin.foitt.wallet.theme.WalletListItems
 import ch.admin.foitt.wallet.theme.WalletTexts
 import ch.admin.foitt.wallet.theme.WalletTheme
 
@@ -50,14 +53,14 @@ fun BadgeBottomSheet(
     }
 }
 
+@Suppress("CyclomaticComplexMethod")
 @Composable
 private fun ModalBottomSheetContent(
     badgeBottomSheetUiState: BadgeBottomSheetUiState
 ) = when (badgeBottomSheetUiState) {
     is BadgeBottomSheetUiState.TrustVerified -> BottomSheetContent(
-        badge = {
-            TrustBadgeTrusted()
-        },
+        actorPainter = badgeBottomSheetUiState.actorPainter,
+        badge = { if (badgeBottomSheetUiState.actorPainter == null) { TrustBadgeTrusted() } },
         title = stringResource(R.string.tk_badgeInformation_inTrustRegistry_primary, badgeBottomSheetUiState.actorName),
         body = stringResource(R.string.tk_badgeInformation_inTrustRegistry_secondary),
         hint = stringResource(
@@ -67,11 +70,7 @@ private fun ModalBottomSheetContent(
         ),
         onMoreInformation = badgeBottomSheetUiState.onMoreInformation,
     )
-
-    is BadgeBottomSheetUiState.TrustNotVerified -> BottomSheetContent(
-        badge = {
-            TrustBadgeNotTrusted()
-        },
+    is BadgeBottomSheetUiState.BadgeNotVerified -> BottomSheetContent(
         title = stringResource(R.string.tk_badgeInformation_inBaseRegistry_primary, badgeBottomSheetUiState.actorName),
         body = stringResource(R.string.tk_badgeInformation_inBaseRegistry_secondary),
         hint = stringResource(
@@ -79,6 +78,26 @@ private fun ModalBottomSheetContent(
             badgeBottomSheetUiState.actorName,
             badgeBottomSheetUiState.actorName,
         ),
+        onMoreInformation = badgeBottomSheetUiState.onMoreInformation,
+    )
+
+    is BadgeBottomSheetUiState.VerifiedCheckApp -> BottomSheetContent(
+        badge = {
+            TrustBadgeTrusted()
+        },
+        title = stringResource(R.string.tk_badgeInformation_trustedCheckApp_primary),
+        body = stringResource(R.string.tk_badgeInformation_trustedCheckApp_secondary),
+        hint = stringResource(R.string.tk_badgeInformation_trustedCheckApp_hint),
+        onMoreInformation = badgeBottomSheetUiState.onMoreInformation,
+    )
+
+    is BadgeBottomSheetUiState.NotVerifiedCheckApp -> BottomSheetContent(
+        badge = {
+            TrustBadgeNotTrusted()
+        },
+        title = stringResource(R.string.tk_badgeInformation_notTrustedCheckApp_primary),
+        body = stringResource(R.string.tk_badgeInformation_notTrustedCheckApp_secondary),
+        hint = stringResource(R.string.tk_badgeInformation_notTrustedCheckApp_hint),
         onMoreInformation = badgeBottomSheetUiState.onMoreInformation,
     )
 
@@ -131,9 +150,8 @@ private fun ModalBottomSheetContent(
     is BadgeBottomSheetUiState.SensitiveClaim -> {}
 
     is BadgeBottomSheetUiState.NonCompliantActor -> BottomSheetContent(
-        badge = {
-            NonCompliantActorBadge()
-        },
+        actorPainter = badgeBottomSheetUiState.actorPainter,
+        badge = { if (badgeBottomSheetUiState.actorPainter == null) { NonCompliantActorBadge() } },
         title = stringResource(R.string.tk_badgeInformation_nonCompliant_primary, badgeBottomSheetUiState.actorName),
         body = stringResource(R.string.tk_badgeInformation_nonCompliant_secondary),
         bodySecondary = badgeBottomSheetUiState.reason,
@@ -166,7 +184,8 @@ private fun ModalBottomSheetContent(
 
 @Composable
 private fun BottomSheetContent(
-    badge: @Composable () -> Unit,
+    actorPainter: Painter? = null,
+    badge: (@Composable () -> Unit)? = null,
     title: String,
     body: String? = null,
     bodySecondary: String? = null,
@@ -175,7 +194,18 @@ private fun BottomSheetContent(
 ) = Column(
     modifier = Modifier.padding(horizontal = Sizes.s06, vertical = Sizes.s02)
 ) {
-    badge()
+    actorPainter?.let { painter ->
+        Avatar(
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            imagePainter = painter,
+            size = AvatarSize.LARGE,
+            imageTint = WalletTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.height(Sizes.s02))
+    }
+    badge?.let {
+        badge()
+    }
     WalletTexts.BodyLargeEmphasized(
         text = title,
         color = WalletTheme.colorScheme.onSurface,
@@ -190,7 +220,7 @@ private fun BottomSheetContent(
         Spacer(modifier = Modifier.height(Sizes.s02))
     }
     bodySecondary?.let {
-        ClusterListItem(
+        WalletListItems.Cluster(
             isFirstItem = true,
             isLastItem = true,
             backgroundColor = WalletTheme.colorScheme.surface,
@@ -224,7 +254,7 @@ private fun MoreInformationButton(
     verticalAlignment = Alignment.CenterVertically,
 ) {
     val linkText = stringResource(R.string.tk_badgeInformation_furtherInformation_link_text)
-    val linkAltText = stringResource(R.string.tk_global_externalLink_alt)
+    val linkAltText = stringResource(R.string.tk_global_externalLink_hint)
 
     WalletTexts.LabelLargeEmphasized(
         modifier = Modifier.semantics {
@@ -243,14 +273,17 @@ private fun MoreInformationButton(
 
 private class BadgesBottomSheetPreviewParams : PreviewParameterProvider<BadgeBottomSheetUiState> {
     override val values = sequenceOf(
-        BadgeBottomSheetUiState.TrustVerified(actorName = "Preview actor", onMoreInformation = {}),
-        BadgeBottomSheetUiState.TrustNotVerified(actorName = "Preview actor", onMoreInformation = {}),
+        BadgeBottomSheetUiState.TrustVerified(actorName = "Preview actor", actorPainter = null, onMoreInformation = {}),
+        BadgeBottomSheetUiState.VerifiedCheckApp(actorName = "swiyu Check", onMoreInformation = {}),
+        BadgeBottomSheetUiState.NotVerifiedCheckApp(actorName = "swiyu Check", onMoreInformation = {}),
+        BadgeBottomSheetUiState.BadgeNotVerified(actorName = "Preview actor", actorPainter = null, onMoreInformation = {}),
         BadgeBottomSheetUiState.LegitimateIssuer(actorName = "Preview actor", onMoreInformation = {}),
         BadgeBottomSheetUiState.NonLegitimateIssuer(actorName = "Preview actor", onMoreInformation = {}),
         BadgeBottomSheetUiState.LegitimateVerifier(actorName = "Preview actor", onMoreInformation = {}),
         BadgeBottomSheetUiState.NonLegitimateVerifier(actorName = "Preview actor", onMoreInformation = {}),
         BadgeBottomSheetUiState.NonCompliantActor(
             actorName = "Preview actor",
+            actorPainter = null,
             reason = "[Actor Name] is requesting surname, given name, and date of birth, instead of an anonymous age proof only.",
             onMoreInformation = {}
         ),

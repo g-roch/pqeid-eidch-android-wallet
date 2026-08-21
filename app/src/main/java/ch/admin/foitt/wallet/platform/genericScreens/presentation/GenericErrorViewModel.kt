@@ -1,20 +1,32 @@
 package ch.admin.foitt.wallet.platform.genericScreens.presentation
 
-import ch.admin.foitt.wallet.R
+import android.content.Context
+import androidx.lifecycle.viewModelScope
+import ch.admin.foitt.openid4vc.domain.usecase.DeclinePresentation
+import ch.admin.foitt.wallet.platform.credentialPresentation.domain.usecase.ValidateRedirectUri
+import ch.admin.foitt.wallet.platform.genericScreens.domain.model.DeclineData
 import ch.admin.foitt.wallet.platform.genericScreens.domain.model.GenericErrorScreenState
 import ch.admin.foitt.wallet.platform.navigation.NavigationManager
 import ch.admin.foitt.wallet.platform.navigation.domain.model.Destination
 import ch.admin.foitt.wallet.platform.scaffold.domain.model.TopBarState
 import ch.admin.foitt.wallet.platform.scaffold.domain.usecase.SetTopBarState
 import ch.admin.foitt.wallet.platform.scaffold.presentation.ScreenViewModel
+import ch.admin.foitt.wallet.platform.utils.openLink
+import com.github.michaelbull.result.onErr
+import com.github.michaelbull.result.onOk
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.launch
 
 @HiltViewModel(assistedFactory = GenericErrorViewModel.Factory::class)
 class GenericErrorViewModel @AssistedInject constructor(
+    private val declinePresentation: DeclinePresentation,
+    private val validateRedirectUri: ValidateRedirectUri,
     private val navManager: NavigationManager,
+    @param:ApplicationContext private val appContext: Context,
     @Assisted private val errorScreenState: GenericErrorScreenState,
     setTopBarState: SetTopBarState,
 ) : ScreenViewModel(setTopBarState) {
@@ -25,43 +37,64 @@ class GenericErrorViewModel @AssistedInject constructor(
         fun create(error: GenericErrorScreenState): GenericErrorViewModel
     }
 
+    val image = when (errorScreenState) {
+        is GenericErrorScreenState.Error -> errorScreenState.image
+        is GenericErrorScreenState.PresentationError -> errorScreenState.image
+    }
+
     val title = when (errorScreenState) {
-        GenericErrorScreenState.GENERIC -> R.string.presentation_error_title
-        else -> R.string.tk_credentialOffer_error_primary
+        is GenericErrorScreenState.Error -> errorScreenState.title
+        is GenericErrorScreenState.PresentationError -> errorScreenState.title
     }
 
     val subtitle = when (errorScreenState) {
-        GenericErrorScreenState.GENERIC -> R.string.presentation_error_message
-        else -> R.string.tk_credentialOffer_error_secondary
+        is GenericErrorScreenState.Error -> errorScreenState.subtitle
+        is GenericErrorScreenState.PresentationError -> errorScreenState.subtitle
     }
 
     val errorText = when (errorScreenState) {
-        GenericErrorScreenState.GENERIC -> null
-        else -> errorScreenState.name.lowercase()
+        is GenericErrorScreenState.Error -> errorScreenState.errorText
+        is GenericErrorScreenState.PresentationError -> errorScreenState.errorText
     }
 
     val errorDescription = when (errorScreenState) {
-        GenericErrorScreenState.GENERIC -> null
-        GenericErrorScreenState.INVALID_REQUEST -> R.string.tk_credentialOffer_error_invalidRequest_description
-        GenericErrorScreenState.INVALID_GRANT -> R.string.tk_credentialOffer_error_invalidGrant_description
-        GenericErrorScreenState.INVALID_CLIENT -> R.string.tk_credentialOffer_error_invalidClient_description
-        GenericErrorScreenState.INVALID_CREDENTIAL_REQUEST -> R.string.tk_credentialOffer_error_invalidCredentialRequest_description
-        GenericErrorScreenState.UNKNOWN_CREDENTIAL_CONFIGURATION ->
-            R.string.tk_credentialOffer_error_unknownCredentialConfiguration_description
-        GenericErrorScreenState.UNKNOWN_CREDENTIAL_IDENTIFIER ->
-            R.string.tk_credentialOffer_error_unknownCredentialIdentifier_description
-        GenericErrorScreenState.INVALID_PROOF -> R.string.tk_credentialOffer_error_invalidProof_description
-        GenericErrorScreenState.INVALID_NONCE -> R.string.tk_credentialOffer_error_invalidNonce_description
-        GenericErrorScreenState.INVALID_ENCRYPTION_PARAMETERS ->
-            R.string.tk_credentialOffer_error_invalidEncryptionParameters_description
-        GenericErrorScreenState.CREDENTIAL_REQUEST_DENIED -> R.string.tk_credentialOffer_error_credentialRequestDenied_description
-        GenericErrorScreenState.INVALID_TRANSACTION_ID -> R.string.tk_credentialOffer_error_invalidTransactionId_description
-        GenericErrorScreenState.INVALID_REQUEST_BEARER_TOKEN -> R.string.tk_credentialOffer_error_invalidRequest_description
-        GenericErrorScreenState.INSUFFICIENT_SCOPE -> R.string.tk_credentialOffer_error_insufficientScope_description
-        GenericErrorScreenState.INVALID_TOKEN -> R.string.tk_credentialOffer_error_invalidToken_description
-        GenericErrorScreenState.UNAUTHORIZED_CLIENT -> R.string.tk_credentialOffer_error_unauthorizedClient_description
-        GenericErrorScreenState.UNAUTHORIZED_GRANT_TYPE -> R.string.tk_credentialOffer_error_unauthorizedGrantType_description
+        is GenericErrorScreenState.Error -> errorScreenState.errorDescription
+        is GenericErrorScreenState.PresentationError -> errorScreenState.errorDescription
     }
 
-    fun onBack() = navManager.navigateBackToHomeScreen(Destination.GenericErrorScreen::class)
+    fun onClick() = when (errorScreenState) {
+        is GenericErrorScreenState.Error -> {
+            if (errorScreenState.declineData != null) {
+                rejectPresentation(errorScreenState.declineData)
+            } else {
+                backToHome()
+            }
+        }
+
+        is GenericErrorScreenState.PresentationError -> backToHome()
+    }
+
+    private fun rejectPresentation(declineData: DeclineData) = viewModelScope.launch {
+        declinePresentation(
+            url = declineData.responseUri,
+            reason = declineData.reason,
+            state = declineData.state,
+        ).onOk { authorizationResponseResponse ->
+            authorizationResponseResponse.redirectUri?.let {
+                handleRedirectUri(it)
+            } ?: backToHome()
+        }.onErr {
+            backToHome()
+        }
+    }
+
+    private fun handleRedirectUri(redirectUri: String) = validateRedirectUri(redirectUri)
+        .onOk {
+            appContext.openLink(redirectUri)
+            backToHome()
+        }.onErr {
+            navManager.replaceCurrentWith(Destination.GenericErrorScreen(GenericErrorScreenState.General.invalidRedirectUri()))
+        }
+
+    private fun backToHome() = navManager.navigateBackToHomeScreen(Destination.GenericErrorScreen::class)
 }

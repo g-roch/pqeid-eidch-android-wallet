@@ -1,39 +1,39 @@
 package ch.admin.foitt.wallet.feature.login.presentation
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.admin.foitt.wallet.R
+import ch.admin.foitt.wallet.platform.composables.AdaptiveButtonContainer
 import ch.admin.foitt.wallet.platform.composables.Buttons
 import ch.admin.foitt.wallet.platform.composables.LoadingOverlay
 import ch.admin.foitt.wallet.platform.composables.PassphraseValidationErrorToastFixed
 import ch.admin.foitt.wallet.platform.composables.presentation.WindowWidthClass
+import ch.admin.foitt.wallet.platform.composables.presentation.bottomSafeDrawing
 import ch.admin.foitt.wallet.platform.composables.presentation.centerHorizontallyOnFullscreen
 import ch.admin.foitt.wallet.platform.composables.presentation.layout.WalletLayouts
 import ch.admin.foitt.wallet.platform.composables.presentation.windowWidthClass
-import ch.admin.foitt.wallet.platform.login.domain.Constants.MAX_LOGIN_ATTEMPTS
 import ch.admin.foitt.wallet.platform.passphraseInput.domain.model.PassphraseInputFieldState
 import ch.admin.foitt.wallet.platform.passphraseInput.presentation.PassphraseInputComponent
 import ch.admin.foitt.wallet.platform.preview.WalletAllScreenPreview
@@ -71,7 +71,8 @@ fun PassphraseLoginScreen(
     PassphraseLoginScreenContent(
         textFieldValue = viewModel.textFieldValue.collectAsStateWithLifecycle().value,
         passphraseInputFieldState = viewModel.passphraseInputFieldState.collectAsStateWithLifecycle().value,
-        loginAttemptsLeft = viewModel.loginAttemptsLeft.collectAsStateWithLifecycle().value,
+        attemptsLeft = viewModel.loginAttemptsLeft.collectAsStateWithLifecycle().value,
+        showSupportText = viewModel.showSupportText.collectAsStateWithLifecycle().value,
         showPassphraseErrorToast = viewModel.showPassphraseErrorToast.collectAsStateWithLifecycle().value,
         showBiometricsLoginButton = viewModel.showBiometricLoginButton.collectAsStateWithLifecycle().value,
         isLoading = isLoading,
@@ -87,7 +88,8 @@ fun PassphraseLoginScreen(
 private fun PassphraseLoginScreenContent(
     textFieldValue: TextFieldValue,
     passphraseInputFieldState: PassphraseInputFieldState,
-    loginAttemptsLeft: Int,
+    attemptsLeft: Int,
+    showSupportText: Boolean,
     showPassphraseErrorToast: Boolean,
     showBiometricsLoginButton: Boolean,
     isLoading: Boolean,
@@ -98,14 +100,15 @@ private fun PassphraseLoginScreenContent(
 ) {
     FullscreenGradient()
 
-    when (currentWindowAdaptiveInfo().windowWidthClass()) {
+    when (currentWindowAdaptiveInfoV2().windowWidthClass()) {
         WindowWidthClass.COMPACT -> WalletLayouts.CompactContainerFloatingBottom(
             verticalArrangement = Arrangement.Top,
             content = {
                 CompactContent(
                     textFieldValue = textFieldValue,
                     passphraseInputFieldState = passphraseInputFieldState,
-                    loginAttemptsLeft = loginAttemptsLeft,
+                    attemptsLeft = attemptsLeft,
+                    showSupportText = showSupportText,
                     isLoading = isLoading,
                     onTextFieldValueChange = onTextFieldValueChange,
                     onLoginWithPassphrase = onLoginWithPassphrase,
@@ -120,23 +123,34 @@ private fun PassphraseLoginScreenContent(
                 )
             },
             stickyBottomContent = {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(Sizes.s04, Alignment.End),
-                    verticalArrangement = Arrangement.spacedBy(Sizes.s02)
-                ) {
-                    if (showBiometricsLoginButton) {
-                        Buttons.FilledSecondaryFixed(
-                            text = stringResource(R.string.tk_global_loginbiometric_primarybutton),
-                            startIcon = painterResource(R.drawable.ic_fingerprint),
-                            onClick = onLoginWithBiometrics
+                AdaptiveButtonContainer(
+                    buttons = buildList {
+                        add(
+                            {
+                                Buttons.FilledPrimaryFixed(
+                                    text = stringResource(R.string.tk_global_login_primarybutton),
+                                    onClick = onLoginWithPassphrase
+                                )
+                            }
                         )
-                    }
-                    Buttons.FilledPrimaryFixed(
-                        text = stringResource(R.string.tk_global_login_primarybutton),
-                        onClick = onLoginWithPassphrase
-                    )
-                }
+
+                        if (showBiometricsLoginButton) {
+                            add(
+                                {
+                                    Buttons.FilledSecondaryFixed(
+                                        text = stringResource(R.string.tk_global_loginbiometric_primarybutton),
+                                        startIcon = painterResource(R.drawable.ic_fingerprint),
+                                        onClick = onLoginWithBiometrics
+                                    )
+                                }
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .bottomSafeDrawing()
+                        .padding(Sizes.s04)
+                )
             },
         )
 
@@ -145,7 +159,8 @@ private fun PassphraseLoginScreenContent(
                 LargeContent(
                     textFieldValue = textFieldValue,
                     passphraseInputFieldState = passphraseInputFieldState,
-                    loginAttemptsLeft = loginAttemptsLeft,
+                    attemptsLeft = attemptsLeft,
+                    showSupportText = showSupportText,
                     showBiometricsLoginButton = showBiometricsLoginButton,
                     isLoading = isLoading,
                     onTextFieldValueChange = onTextFieldValueChange,
@@ -173,7 +188,8 @@ private fun PassphraseLoginScreenContent(
 private fun CompactContent(
     textFieldValue: TextFieldValue,
     passphraseInputFieldState: PassphraseInputFieldState,
-    loginAttemptsLeft: Int,
+    attemptsLeft: Int,
+    showSupportText: Boolean,
     isLoading: Boolean,
     onTextFieldValueChange: (TextFieldValue) -> Unit,
     onLoginWithPassphrase: () -> Unit,
@@ -184,6 +200,10 @@ private fun CompactContent(
     PassphraseInputComponent(
         modifier = Modifier.fillMaxWidth(),
         passphraseInputFieldState = passphraseInputFieldState,
+        errorMessage = errorMessage(
+            showSupportText = showSupportText,
+            attemptsLeft = attemptsLeft,
+        ),
         textFieldValue = textFieldValue,
         colors = WalletTextFieldColors.textFieldColorsFixed(),
         keyboardImeAction = ImeAction.Go,
@@ -193,10 +213,12 @@ private fun CompactContent(
             Placeholder()
         },
         supportingText = {
-            SupportingText(
-                isLoading = isLoading,
-                loginAttemptsLeft = loginAttemptsLeft,
-            )
+            if (showSupportText && !isLoading) {
+                SupportingText(
+                    attemptsLeft = attemptsLeft,
+                    isError = passphraseInputFieldState is PassphraseInputFieldState.Error,
+                )
+            }
         },
         onAnimationFinished = {},
     )
@@ -206,7 +228,8 @@ private fun CompactContent(
 private fun LargeContent(
     textFieldValue: TextFieldValue,
     passphraseInputFieldState: PassphraseInputFieldState,
-    loginAttemptsLeft: Int,
+    attemptsLeft: Int,
+    showSupportText: Boolean,
     showBiometricsLoginButton: Boolean,
     isLoading: Boolean,
     onTextFieldValueChange: (TextFieldValue) -> Unit,
@@ -222,6 +245,10 @@ private fun LargeContent(
         PassphraseInputComponent(
             modifier = Modifier.weight(1f),
             passphraseInputFieldState = passphraseInputFieldState,
+            errorMessage = errorMessage(
+                showSupportText = showSupportText,
+                attemptsLeft = attemptsLeft,
+            ),
             textFieldValue = textFieldValue,
             colors = WalletTextFieldColors.textFieldColorsFixed(),
             keyboardImeAction = ImeAction.Go,
@@ -231,10 +258,12 @@ private fun LargeContent(
                 Placeholder()
             },
             supportingText = {
-                SupportingText(
-                    isLoading = isLoading,
-                    loginAttemptsLeft = loginAttemptsLeft,
-                )
+                if (showSupportText && !isLoading) {
+                    SupportingText(
+                        attemptsLeft = attemptsLeft,
+                        isError = passphraseInputFieldState is PassphraseInputFieldState.Error,
+                    )
+                }
             },
             onAnimationFinished = {},
         )
@@ -300,19 +329,39 @@ private fun Placeholder() = WalletTexts.BodyLarge(
 )
 
 @Composable
-private fun SupportingText(
-    isLoading: Boolean,
-    loginAttemptsLeft: Int,
-) {
-    val hideSupportText = isLoading || loginAttemptsLeft >= MAX_LOGIN_ATTEMPTS
-    WalletTexts.BodySmall(
-        modifier = Modifier
-            .alpha(if (hideSupportText) 0f else 1f)
-            .focusable(!hideSupportText),
-        text = stringResource(R.string.tk_login_passwordfailed_android_subtitle, loginAttemptsLeft),
-        color = WalletTheme.colorScheme.onGradientFixed
-    )
+private fun attemptsLeftText(
+    attemptsLeft: Int,
+): String = pluralStringResource(
+    R.plurals.tk_login_input_error_numberOfTriesLeft,
+    attemptsLeft,
+    attemptsLeft
+)
+
+@Composable
+private fun errorMessage(
+    showSupportText: Boolean,
+    attemptsLeft: Int,
+): String? {
+    val passwordFailed = stringResource(R.string.tk_login_passwordfailed_notification)
+    return when {
+        showSupportText -> "$passwordFailed ${attemptsLeftText(attemptsLeft)}"
+        else -> passwordFailed
+    }
 }
+
+@Composable
+private fun SupportingText(
+    attemptsLeft: Int,
+    isError: Boolean,
+) = WalletTexts.BodySmall(
+    // In the error state the attempts-left info is already announced via the field's
+    // error() semantics (see errorMessage), so clear semantics here to avoid a double
+    // announcement. When not in error (e.g. arriving with attempts already reduced), the
+    // error() semantics is absent, so keep this readable as the only carrier of the info.
+    modifier = if (isError) Modifier.clearAndSetSemantics {} else Modifier,
+    text = attemptsLeftText(attemptsLeft),
+    color = WalletTheme.colorScheme.onGradientFixed
+)
 
 @WalletAllScreenPreview
 @Composable
@@ -320,8 +369,9 @@ private fun PassphraseLoginScreenPreview() {
     WalletTheme {
         PassphraseLoginScreenContent(
             textFieldValue = TextFieldValue("abc123"),
-            passphraseInputFieldState = PassphraseInputFieldState.Typing,
-            loginAttemptsLeft = 5,
+            passphraseInputFieldState = PassphraseInputFieldState.Error,
+            attemptsLeft = 4,
+            showSupportText = true,
             showPassphraseErrorToast = true,
             showBiometricsLoginButton = true,
             isLoading = false,

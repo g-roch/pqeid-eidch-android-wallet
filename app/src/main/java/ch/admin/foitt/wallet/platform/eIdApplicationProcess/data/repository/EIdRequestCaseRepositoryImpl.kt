@@ -2,7 +2,9 @@ package ch.admin.foitt.wallet.platform.eIdApplicationProcess.data.repository
 
 import ch.admin.foitt.wallet.platform.database.data.dao.DaoProvider
 import ch.admin.foitt.wallet.platform.database.data.dao.EIdRequestCaseDao
+import ch.admin.foitt.wallet.platform.database.data.dao.EIdRequestCaseWalletDao
 import ch.admin.foitt.wallet.platform.database.domain.model.EIdRequestCase
+import ch.admin.foitt.wallet.platform.database.domain.model.EIdRequestCaseWallet
 import ch.admin.foitt.wallet.platform.di.IoDispatcher
 import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.model.EIdRequestCaseRepositoryError
 import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.model.toEIdRequestCaseRepositoryError
@@ -54,6 +56,54 @@ class EIdRequestCaseRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun setFilesSubmitted(
+        caseId: String,
+        filesSubmitted: Boolean,
+    ): Result<Unit, EIdRequestCaseRepositoryError> = withContext(ioDispatcher) {
+        runSuspendCatching {
+            eIdRequestCaseDao().setFilesSubmitted(
+                caseId = caseId,
+                filesSubmitted = filesSubmitted,
+            )
+            Unit
+        }.mapError { throwable ->
+            throwable.toEIdRequestCaseRepositoryError("EIdRequestCaseRepository setFilesSubmitted error")
+        }
+    }
+
+    override suspend fun setPushId(
+        caseId: String,
+        pushId: String?
+    ): Result<Unit, EIdRequestCaseRepositoryError> = withContext(ioDispatcher) {
+        runSuspendCatching {
+            eIdRequestCaseDao().setPushId(caseId, pushId)
+            Unit
+        }.mapError { it.toEIdRequestCaseRepositoryError("Failed to update push ID on EIdRequestCase") }
+    }
+
+    override suspend fun addPairingId(
+        caseId: String,
+        pairingId: String,
+    ): Result<Unit, EIdRequestCaseRepositoryError> = withContext(ioDispatcher) {
+        runSuspendCatching {
+            eIdRequestCaseWalletDao().insert(
+                EIdRequestCaseWallet(
+                    eIdRequestCaseId = caseId,
+                    walletPairingId = pairingId,
+                )
+            )
+            Unit
+        }.mapError { it.toEIdRequestCaseRepositoryError("Failed to add pairing ID to EIdRequestCase") }
+    }
+
+    override suspend fun getPairingIds(
+        caseId: String,
+    ): Result<List<String>, EIdRequestCaseRepositoryError> = withContext(ioDispatcher) {
+        runSuspendCatching {
+            eIdRequestCaseWalletDao().getWalletsByCaseId(caseId).map { it.walletPairingId }
+        }.mapError { it.toEIdRequestCaseRepositoryError("Failed to fetch pairing IDs for EIdRequestCase") }
+    }
+
     override suspend fun getEIdRequestCase(
         caseId: String
     ): Result<EIdRequestCase, EIdRequestCaseRepositoryError> = withContext(ioDispatcher) {
@@ -64,6 +114,18 @@ class EIdRequestCaseRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getEIdRequestCasesWithPushId(): Result<List<EIdRequestCase>, EIdRequestCaseRepositoryError> = withContext(
+        ioDispatcher
+    ) {
+        runSuspendCatching {
+            eIdRequestCaseDao().getEIdRequestCasesWithPushId()
+        }.mapError { it.toEIdRequestCaseRepositoryError("Failed to fetch cases with push ID") }
+    }
+
     private val eIdRequestCaseDaoFlow = daoProvider.eIdRequestCaseDaoFlow
+    private val eIdRequestCaseWalletDaoFlow = daoProvider.eIdRequestCaseWalletDaoFlow
     private suspend fun eIdRequestCaseDao(): EIdRequestCaseDao = suspendUntilNonNull { eIdRequestCaseDaoFlow.value }
+    private suspend fun eIdRequestCaseWalletDao(): EIdRequestCaseWalletDao = suspendUntilNonNull {
+        eIdRequestCaseWalletDaoFlow.value
+    }
 }

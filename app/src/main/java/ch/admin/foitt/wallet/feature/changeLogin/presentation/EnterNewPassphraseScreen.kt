@@ -7,9 +7,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -17,6 +16,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.admin.foitt.wallet.R
+import ch.admin.foitt.wallet.platform.composables.AdaptiveBottomButtonBar
 import ch.admin.foitt.wallet.platform.composables.Buttons
 import ch.admin.foitt.wallet.platform.composables.presentation.WindowWidthClass
 import ch.admin.foitt.wallet.platform.composables.presentation.layout.WalletLayouts
@@ -49,7 +49,7 @@ private fun EnterNewPassphraseScreenContent(
     onTextFieldValueChange: (TextFieldValue) -> Unit,
     onCheckPassphrase: () -> Unit,
 ) {
-    when (currentWindowAdaptiveInfo().windowWidthClass()) {
+    when (currentWindowAdaptiveInfoV2().windowWidthClass()) {
         WindowWidthClass.COMPACT -> WalletLayouts.CompactContainerFloatingBottom(
             modifier = Modifier.background(WalletTheme.colorScheme.surfaceContainerLow),
             shouldScrollUnderTopBar = false,
@@ -62,11 +62,16 @@ private fun EnterNewPassphraseScreenContent(
                     onCheckPassphrase = onCheckPassphrase
                 )
             },
-            stickyBottomHorizontalAlignment = Alignment.End,
             stickyBottomContent = {
-                BottomButton(
-                    enabled = isPassphraseValid,
-                    onCheckPassphrase = onCheckPassphrase,
+                AdaptiveBottomButtonBar(
+                    buttons = listOf(
+                        {
+                            BottomButton(
+                                enabled = isPassphraseValid,
+                                onCheckPassphrase = onCheckPassphrase,
+                            )
+                        }
+                    )
                 )
             },
         )

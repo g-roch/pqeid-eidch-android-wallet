@@ -1,15 +1,18 @@
 package ch.admin.foitt.wallet.platform.trustRegistry.domain.usecase.implementation
 
-import ch.admin.foitt.openid4vc.domain.model.SigningAlgorithm
+import ch.admin.foitt.didResolver.domain.DidResolverHelper
+import ch.admin.foitt.openid4vc.domain.model.SignatureAlgorithm
 import ch.admin.foitt.openid4vc.domain.model.anycredential.Validity
 import ch.admin.foitt.openid4vc.domain.model.jwt.VerifyJwtSignatureFromDidError
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSdJwt
 import ch.admin.foitt.openid4vc.domain.usecase.jwt.VerifyJwtSignatureFromDid
 import ch.admin.foitt.wallet.platform.credentialStatus.domain.model.CredentialStatusProperties
+import ch.admin.foitt.wallet.platform.credentialStatus.domain.model.FetchCredentialStatusError
 import ch.admin.foitt.wallet.platform.credentialStatus.domain.usecase.FetchCredentialStatus
 import ch.admin.foitt.wallet.platform.database.domain.model.CredentialStatus
 import ch.admin.foitt.wallet.platform.environmentSetup.domain.repository.EnvironmentSetupRepository
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.ValidateTrustStatementError
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.toUnexpected
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.toValidateTrustStatementError
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.usecase.GetTrustDomainFromDid
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.usecase.ValidateTrustStatement
@@ -22,6 +25,7 @@ import com.github.michaelbull.result.mapError
 import javax.inject.Inject
 
 internal class ValidateTrustStatementImpl @Inject constructor(
+    private val didResolverHelper: DidResolverHelper,
     private val getTrustDomainFromDid: GetTrustDomainFromDid,
     private val environmentSetupRepo: EnvironmentSetupRepository,
     private val verifyJwtSignatureFromDid: VerifyJwtSignatureFromDid,
@@ -32,8 +36,11 @@ internal class ValidateTrustStatementImpl @Inject constructor(
         trustStatement: VcSdJwt,
         actorDid: String,
     ): Result<VcSdJwt, ValidateTrustStatementError> = coroutineBinding {
+        val trustStatementDid = didResolverHelper.getDidStringFromAbsoluteKeyId(trustStatement.kid)
+            .mapError(Throwable::toUnexpected).bind()
+
         runSuspendCatching {
-            check(trustStatement.hasTrustedDid(actorDid)) {
+            check(hasTrustedDid(actorDid, trustStatementDid)) {
                 errorMessageStart + "issuer did is not trusted"
             }
 
@@ -41,12 +48,11 @@ internal class ValidateTrustStatementImpl @Inject constructor(
             check(trustStatement.type == VCSDJWT_TYPE_VALUE) {
                 errorMessageStart + "type is unsupported"
             }
-            check(trustStatement.algorithm == SigningAlgorithm.ES256.stdName) {
+            check(SignatureAlgorithm.fromStdName(trustStatement.algorithm) in supportedAlgorithms) {
                 errorMessageStart + "algorithm is unsupported"
             }
 
             verifyJwtSignatureFromDid(
-                did = trustStatement.vcIssuer,
                 kid = trustStatement.kid,
                 jwt = trustStatement,
             ).mapError(VerifyJwtSignatureFromDidError::toValidateTrustStatementError)
@@ -62,32 +68,32 @@ internal class ValidateTrustStatementImpl @Inject constructor(
 
             // Status of trust statement
             val statusJsonElement = checkNotNull(trustStatement.status)
+
             val statusProperties =
                 checkNotNull(safeJson.safeDecodeElementTo<CredentialStatusProperties>(statusJsonElement).get()) {
                     "$errorMessageStart has no status"
                 }
 
-            val trustStatementStatus = fetchCredentialStatus(trustStatement.vcIssuer, statusProperties).get()
-
+            val trustStatementStatus = fetchCredentialStatus(trustStatementDid, statusProperties)
+                .mapError(FetchCredentialStatusError::toValidateTrustStatementError)
+                .bind()
             check(trustStatementStatus == CredentialStatus.VALID) {
                 "$errorMessageStart status is not valid"
             }
+        }.mapError(Throwable::toUnexpected).bind()
 
-            trustStatement
-        }.mapError { throwable ->
-            throwable.toValidateTrustStatementError("ValidateTrustStatement error")
-        }.bind()
+        trustStatement
     }
 
-    private fun VcSdJwt.hasTrustedDid(actorDid: String): Boolean {
+    private fun hasTrustedDid(actorDid: String, trustStatementDid: String): Boolean {
         val trustDomain = getTrustDomainFromDid(actorDid).get() ?: return false
-
-        return environmentSetupRepo.trustRegistryTrustedDids[trustDomain]?.contains(this.vcIssuer) ?: false
+        return environmentSetupRepo.trustV1TrustRegistryTrustedDids[trustDomain]?.contains(trustStatementDid) ?: false
     }
 
     private val errorMessageStart = "Trust statement "
 
-    private companion object {
+    companion object {
         const val VCSDJWT_TYPE_VALUE = "vc+sd-jwt"
+        private val supportedAlgorithms = setOf(SignatureAlgorithm.ES256, SignatureAlgorithm.EdDSA)
     }
 }

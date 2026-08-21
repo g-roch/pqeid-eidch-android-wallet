@@ -3,9 +3,11 @@ package ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation
 import android.annotation.SuppressLint
 import ch.admin.foitt.openid4vc.domain.model.DeferredCredential
 import ch.admin.foitt.openid4vc.domain.model.SigningAlgorithm
+import ch.admin.foitt.openid4vc.domain.model.TokenType
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialFormat
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.IssuerCredentialInfo
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.RawAndParsedIssuerCredentialInfo
+import ch.admin.foitt.openid4vc.domain.model.jwt.Jwt
 import ch.admin.foitt.openid4vc.domain.model.keyBinding.KeyBinding
 import ch.admin.foitt.openid4vc.domain.model.keyBinding.KeyBindingType
 import ch.admin.foitt.wallet.platform.credential.domain.model.AnyDisplays
@@ -13,6 +15,7 @@ import ch.admin.foitt.wallet.platform.credential.domain.model.CredentialError
 import ch.admin.foitt.wallet.platform.credential.domain.model.FetchCredentialResult
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.GenerateAnyDisplays
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.HandleDeferredCredentialResult
+import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.CREDENTIAL_IDENTIFIER
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.credentialConfig
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.oneConfigCredentialInformation
 import ch.admin.foitt.wallet.platform.oca.domain.model.OcaBundle
@@ -52,6 +55,9 @@ class HandleDeferredCredentialResultImplTest {
     @MockK
     private lateinit var mockCredentialOfferRepository: CredentialOfferRepository
 
+    @MockK
+    private lateinit var mockIssuerCredentialInfoJwt: Jwt
+
     private lateinit var useCase: HandleDeferredCredentialResult
 
     @BeforeEach
@@ -81,7 +87,7 @@ class HandleDeferredCredentialResultImplTest {
             deferredCredential = deferredCredential,
             rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
                 issuerCredentialInfo = oneConfigCredentialInformation,
-                rawIssuerCredentialInfo = ""
+                rawIssuerCredentialInfo = mockIssuerCredentialInfoJwt
             ),
             credentialConfig = credentialConfig,
         )
@@ -96,16 +102,18 @@ class HandleDeferredCredentialResultImplTest {
                 anyCredential = null,
                 issuerInfo = oneConfigCredentialInformation,
                 trustStatement = null,
-                metadata = credentialConfig,
+                credentialConfiguration = credentialConfig,
                 ocaBundle = ocaBundle
             )
             mockCredentialOfferRepository.saveDeferredCredentialOffer(
                 transactionId = deferredCredential.transactionId,
                 accessToken = deferredCredential.accessToken,
+                tokenType = deferredCredential.tokenType,
                 refreshToken = deferredCredential.refreshToken,
                 endpoint = deferredCredential.endpoint,
                 pollInterval = deferredCredential.pollInterval,
                 keyBindings = deferredCredential.keyBindings,
+                dpopKeyBinding = deferredCredential.dpopKeyBinding,
                 format = deferredCredential.format,
                 issuerDisplays = anyDisplays.issuerDisplays,
                 credentialDisplays = anyDisplays.credentialDisplays,
@@ -130,7 +138,7 @@ class HandleDeferredCredentialResultImplTest {
             deferredCredential = deferredCredential,
             rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
                 issuerCredentialInfo = oneConfigCredentialInformation,
-                rawIssuerCredentialInfo = ""
+                rawIssuerCredentialInfo = mockIssuerCredentialInfoJwt
             ),
             credentialConfig = credentialConfig,
         ).assertErrorType(CredentialError.Unexpected::class)
@@ -146,7 +154,7 @@ class HandleDeferredCredentialResultImplTest {
                 anyCredential = any(),
                 issuerInfo = any(),
                 trustStatement = any(),
-                metadata = any(),
+                credentialConfiguration = any(),
                 ocaBundle = any()
             )
         } returns Err(CredentialError.Unexpected(exception))
@@ -156,7 +164,7 @@ class HandleDeferredCredentialResultImplTest {
             deferredCredential = deferredCredential,
             rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
                 issuerCredentialInfo = oneConfigCredentialInformation,
-                rawIssuerCredentialInfo = ""
+                rawIssuerCredentialInfo = mockIssuerCredentialInfoJwt
             ),
             credentialConfig = credentialConfig,
         ).assertErrorType(CredentialError.Unexpected::class)
@@ -177,7 +185,7 @@ class HandleDeferredCredentialResultImplTest {
             deferredCredential = deferredCredential,
             rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
                 issuerCredentialInfo = oneConfigCredentialInformation,
-                rawIssuerCredentialInfo = ""
+                rawIssuerCredentialInfo = mockIssuerCredentialInfoJwt
             ),
             credentialConfig = credentialConfig,
         )
@@ -190,6 +198,9 @@ class HandleDeferredCredentialResultImplTest {
         credentialInfo: IssuerCredentialInfo = oneConfigCredentialInformation,
     ) {
         every { credentialConfig.format } returns CredentialFormat.VC_SD_JWT
+        every { credentialConfig.identifier } returns CREDENTIAL_IDENTIFIER
+
+        every { mockIssuerCredentialInfoJwt.payloadString } returns ""
 
         coEvery { mockOcaBundler(any()) } returns Ok(ocaBundle)
 
@@ -198,7 +209,7 @@ class HandleDeferredCredentialResultImplTest {
                 anyCredential = any(),
                 issuerInfo = credentialInfo,
                 trustStatement = any(),
-                metadata = credentialConfig,
+                credentialConfiguration = credentialConfig,
                 ocaBundle = any(),
             )
         } returns Ok(anyDisplays)
@@ -207,10 +218,12 @@ class HandleDeferredCredentialResultImplTest {
             mockCredentialOfferRepository.saveDeferredCredentialOffer(
                 transactionId = any(),
                 accessToken = any(),
+                tokenType = any(),
                 refreshToken = any(),
                 endpoint = any(),
                 pollInterval = any(),
                 keyBindings = any(),
+                dpopKeyBinding = any(),
                 format = any(),
                 issuerDisplays = any(),
                 credentialDisplays = any(),
@@ -245,9 +258,11 @@ class HandleDeferredCredentialResultImplTest {
             keyBindings = listOf(keyBinding),
             transactionId = "transactionId",
             accessToken = "accessToken",
+            tokenType = TokenType.BEARER,
             refreshToken = "refreshToken",
             endpoint = URL("https://example"),
             pollInterval = 1,
+            dpopKeyBinding = null,
         )
     }
 }

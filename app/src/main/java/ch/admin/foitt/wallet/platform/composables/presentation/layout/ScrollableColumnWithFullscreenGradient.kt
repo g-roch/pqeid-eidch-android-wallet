@@ -1,7 +1,7 @@
 package ch.admin.foitt.wallet.platform.composables.presentation.layout
 
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import ch.admin.foitt.wallet.platform.composables.LoadingOverlay
@@ -14,11 +14,11 @@ import ch.admin.foitt.wallet.theme.WalletTheme
 fun WalletLayouts.ScrollableColumnWithFullscreenGradient(
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
-    stickyBottomContent: (@Composable () -> Unit)?,
+    stickyBottomContent: (@Composable (isLarge: Boolean) -> Unit)?,
     scrollableContent: @Composable ColumnScope.() -> Unit,
 ) {
     FullscreenGradient()
-    when (currentWindowAdaptiveInfo().windowWidthClass()) {
+    when (currentWindowAdaptiveInfoV2().windowWidthClass()) {
         WindowWidthClass.COMPACT -> CompactContainerFloatingBottom(
             modifier = modifier,
             content = {
@@ -26,7 +26,7 @@ fun WalletLayouts.ScrollableColumnWithFullscreenGradient(
             },
             stickyBottomContent = {
                 stickyBottomContent?.let {
-                    stickyBottomContent()
+                    stickyBottomContent(false)
                 }
             }
         )
@@ -37,7 +37,7 @@ fun WalletLayouts.ScrollableColumnWithFullscreenGradient(
             },
             stickyBottomContent = {
                 stickyBottomContent?.let {
-                    stickyBottomContent()
+                    stickyBottomContent(true)
                 }
             }
         )

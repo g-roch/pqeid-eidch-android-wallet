@@ -1,19 +1,30 @@
 package ch.admin.foitt.wallet.platform.credentialPresentation.domain.usecase.implementation
 
+import ch.admin.foitt.openid4vc.domain.model.SignatureAlgorithm
+import ch.admin.foitt.openid4vc.domain.model.anycredential.Validity
+import ch.admin.foitt.openid4vc.domain.model.jwk.Jwks
 import ch.admin.foitt.openid4vc.domain.model.jwt.Jwt
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.AuthorizationRequest
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.ClientMetaData
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.RequestObject
+import ch.admin.foitt.openid4vc.domain.model.presentationRequest.RequestObjectVerificationOutcome
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSdJwtError
 import ch.admin.foitt.openid4vc.domain.usecase.VerifyRequestObjectSignature
+import ch.admin.foitt.wallet.platform.actorEnvironment.domain.model.ActorEnvironment
+import ch.admin.foitt.wallet.platform.actorEnvironment.domain.usecase.GetActorEnvironment
 import ch.admin.foitt.wallet.platform.credentialPresentation.domain.model.CredentialPresentationError
+import ch.admin.foitt.wallet.platform.credentialPresentation.domain.model.VerificationProcessType
 import ch.admin.foitt.wallet.platform.credentialPresentation.domain.usecase.ValidatePresentationRequest
+import ch.admin.foitt.wallet.platform.credentialPresentation.domain.usecase.ValidateVerificationQueryPublicStatement
 import ch.admin.foitt.wallet.platform.credentialPresentation.mock.MockPresentationRequest
 import ch.admin.foitt.wallet.platform.credentialPresentation.mock.MockPresentationRequest.CLIENT_ID
-import ch.admin.foitt.wallet.platform.credentialPresentation.mock.MockPresentationRequest.JWT_CONTAINING_INVALID_AUTHORIZATION_REQUEST
-import ch.admin.foitt.wallet.platform.credentialPresentation.mock.MockPresentationRequest.JWT_MISSING_CLIENT_ID
-import ch.admin.foitt.wallet.platform.credentialPresentation.mock.MockPresentationRequest.JWT_MISSING_RESPONSE_URI
+import ch.admin.foitt.wallet.platform.credentialPresentation.mock.MockPresentationRequest.CLIENT_ID_WITH_PREFIX
+import ch.admin.foitt.wallet.platform.credentialPresentation.mock.MockPresentationRequest.VERIFIER_ATTESTATION_CLIENT_ID
 import ch.admin.foitt.wallet.platform.environmentSetup.domain.repository.EnvironmentSetupRepository
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.IdentityV2TrustStatement
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.TrustRegistryError
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.VerificationQueryPublicStatement
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.usecase.ProcessIdentityTrustStatement
 import ch.admin.foitt.wallet.util.SafeJsonTestInstance
 import ch.admin.foitt.wallet.util.assertErrorType
 import ch.admin.foitt.wallet.util.assertOk
@@ -21,20 +32,26 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import io.mockk.MockKAnnotations
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.impl.annotations.MockK
 import io.mockk.impl.annotations.SpyK
+import io.mockk.mockk
 import io.mockk.unmockkAll
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
+import uniffi.heidi_dcql_rust.DcqlQuery
+import java.time.Instant
 
 class ValidatePresentationRequestImplTest {
 
@@ -49,8 +66,23 @@ class ValidatePresentationRequestImplTest {
     @MockK
     private lateinit var mockVerifyRequestObjectSignature: VerifyRequestObjectSignature
 
+    @MockK
+    private lateinit var mockProcessIdentityTrustStatement: ProcessIdentityTrustStatement
+
+    @MockK
+    private lateinit var mockGetActorEnvironment: GetActorEnvironment
+
+    @MockK
+    private lateinit var mockValidateVerificationQueryPublicStatement: ValidateVerificationQueryPublicStatement
+
+    @MockK
+    private lateinit var mockIdentityTrustStatement: IdentityV2TrustStatement
+
     @SpyK
     private var mockPresentationJwt: Jwt = Jwt(MockPresentationRequest.VALID_JWT)
+
+    @SpyK
+    private var mockTrustedDids: List<String> = mockk()
 
     private lateinit var useCase: ValidatePresentationRequest
 
@@ -60,7 +92,10 @@ class ValidatePresentationRequestImplTest {
         useCase = ValidatePresentationRequestImpl(
             safeJson = testSafeJson,
             environmentSetupRepository = mockEnvironmentSetupRepository,
+            processIdentityTrustStatement = mockProcessIdentityTrustStatement,
             verifyRequestObjectSignature = mockVerifyRequestObjectSignature,
+            getActorEnvironment = mockGetActorEnvironment,
+            validateVqPs = mockValidateVerificationQueryPublicStatement,
         )
 
         setupDefaultMocks()
@@ -72,72 +107,231 @@ class ValidatePresentationRequestImplTest {
     }
 
     @Test
-    fun `A valid jwt presentation request returns Ok`() = runTest {
-        useCase(mockRequestObject).assertOk()
+    fun `A valid jwt presentation request returns presentation request`() = runTest {
+        val result = useCase(VerificationProcessType.NETWORK, mockRequestObject).assertOk()
+
+        assertEquals(MockPresentationRequest.authorizationRequest, result.authorizationRequest)
+        assertEquals(mockPresentationJwt.rawJwt, result.rawPresentationRequest)
+        assertEquals(VerificationProcessType.NETWORK, result.verificationProcessType)
+        assertNull(result.verifierAttestationTrusted)
+        assertEquals(verifiedDcql, result.dcqlQuery)
+        assertEquals(true, result.hasVerifiedQuery)
+
+        coVerify(exactly = 1) {
+            mockGetActorEnvironment(any())
+            mockProcessIdentityTrustStatement(any(), any())
+            mockValidateVerificationQueryPublicStatement(any(), any())
+        }
+    }
+
+    @Test
+    fun `A presentation request without vqPS returns presentation request`() = runTest {
+        every { mockPresentationJwt.payloadJson } returns MockPresentationRequest.authorizationRequestWithoutVqPS.toJsonObject()
+
+        val result = useCase(VerificationProcessType.NETWORK, mockRequestObject).assertOk()
+
+        val expectedRequest = MockPresentationRequest.authorizationRequestWithoutVqPS
+        assertEquals(expectedRequest, result.authorizationRequest)
+        assertEquals(mockPresentationJwt.rawJwt, result.rawPresentationRequest)
+        assertEquals(VerificationProcessType.NETWORK, result.verificationProcessType)
+        assertNull(result.verifierAttestationTrusted)
+        assertEquals(false, result.hasVerifiedQuery)
+        assertEquals(expectedRequest.dcqlQuery, result.dcqlQuery)
+
+        coVerify(exactly = 0) {
+            mockValidateVerificationQueryPublicStatement(any(), any())
+        }
+    }
+
+    @Test
+    fun `Request object jwt with static discovery aud claim returns Ok`() = runTest {
+        val payloadJson = MockPresentationRequest.authorizationRequest.toJsonObject().toMutableMap().apply {
+            put("aud", JsonPrimitive("https://self-issued.me/v2"))
+        }.let { JsonObject(it) }
+        every { mockPresentationJwt.payloadJson } returns payloadJson
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertOk()
+    }
+
+    @Test
+    fun `A valid jwt presentation request with client ID prefix on request object returns Ok`() = runTest {
+        every { mockRequestObject.clientId } returns CLIENT_ID_WITH_PREFIX
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertOk()
+    }
+
+    @Test
+    fun `A valid jwt presentation request with client ID prefix on authorization request returns Ok`() = runTest {
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertOk()
+    }
+
+    @Test
+    fun `A valid proximity jwt presentation request returns Ok`() = runTest {
+        mockProximity()
+
+        val result = useCase(VerificationProcessType.PROXIMITY, mockRequestObject).assertOk()
+
+        val expectedRequest = MockPresentationRequest.authorizationRequestDcApi
+        assertEquals(expectedRequest, result.authorizationRequest)
+        assertEquals(mockPresentationJwt.rawJwt, result.rawPresentationRequest)
+        assertEquals(VerificationProcessType.PROXIMITY, result.verificationProcessType)
+        assertEquals(true, result.verifierAttestationTrusted)
+        assertEquals(expectedRequest.dcqlQuery, result.dcqlQuery)
+        assertEquals(true, result.hasVerifiedQuery)
+
+        coVerify(exactly = 0) {
+            mockGetActorEnvironment(any())
+            mockProcessIdentityTrustStatement(any(), any())
+            mockValidateVerificationQueryPublicStatement(any(), any())
+        }
+    }
+
+    @Test
+    fun `Proximity request object jwt missing response_uri claim returns Ok`() = runTest {
+        mockProximity(responseUri = null)
+
+        useCase(VerificationProcessType.PROXIMITY, mockRequestObject).assertOk()
+    }
+
+    @Test
+    fun `Proximity request object jwt missing kid header returns Ok`(): Unit = runTest {
+        mockProximity(keyId = null)
+
+        useCase(VerificationProcessType.PROXIMITY, mockRequestObject).assertOk()
+    }
+
+    @Test
+    fun `ATTESTATION_UNTRUSTED verification outcome over proximity returns success with verifierAttestationTrusted = false`() = runTest {
+        mockProximity(requestVerificationOutcome = RequestObjectVerificationOutcome.ATTESTATION_UNTRUSTED)
+
+        val result = useCase(VerificationProcessType.PROXIMITY, mockRequestObject).assertOk()
+
+        assertEquals(false, result.verifierAttestationTrusted)
+    }
+
+    @Test
+    fun `DCQL Authorization request using holder binding and containing state returns presentation request`(): Unit = runTest {
+        every {
+            mockPresentationJwt.payloadJson
+        } returns MockPresentationRequest.authorizationRequestWithState.toJsonObject()
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertOk()
+    }
+
+    @Test
+    fun `DCQL Authorization request not using holder binding and containing state returns presentation request`(): Unit = runTest {
+        every {
+            mockPresentationJwt.payloadJson
+        } returns MockPresentationRequest.authorizationRequestWithStateAndNoHolderBinding.toJsonObject()
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertOk()
+    }
+
+    @Test
+    fun `Verifier with BETA actor environment returns presentation request`() = runTest {
+        coEvery { mockGetActorEnvironment(any()) } returns ActorEnvironment.BETA
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertOk()
+    }
+
+    @Test
+    fun `Errors in identity trust return unverified issuer error`(): Unit = runTest {
+        val exception = IllegalStateException("trust error")
+        coEvery {
+            mockProcessIdentityTrustStatement(any(), any())
+        } returns Err(TrustRegistryError.Unexpected(exception))
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.UnverifiedVerifier::class)
+    }
+
+    @Test
+    fun `Without idTS vqPS is still evaluated`(): Unit = runTest {
+        every {
+            mockPresentationJwt.payloadJson
+        } returns MockPresentationRequest.authorizationRequestWithoutIdTS.toJsonObject()
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertOk()
+
+        coVerify(exactly = 1) { mockValidateVerificationQueryPublicStatement(any(), any()) }
+    }
+
+    @Test
+    fun `Request object jwt with no header type returns an error`(): Unit = runTest {
+        every { mockPresentationJwt.type } returns null
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
+    }
+
+    @Test
+    fun `Request object jwt with other header type returns an error`(): Unit = runTest {
+        every { mockPresentationJwt.type } returns "otherType"
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
     }
 
     @TestFactory
-    fun `Request object jwt missing or containing invalid header typ returns an error`(): List<DynamicTest> {
-        val input = listOf(null, "otherType")
-
+    fun `Request object jwt missing parameter returns unexpected error`(): List<DynamicTest> {
+        val input = listOf("client_id", "response_uri")
         return input.map {
-            DynamicTest.dynamicTest("Input: $it should return an unexpected error") {
+            DynamicTest.dynamicTest("Request object jwt missing $it returns an error") {
                 runTest {
-                    every { mockPresentationJwt.type } returns it
+                    val payloadJson = MockPresentationRequest.authorizationRequest.toJsonObject().toMutableMap().apply {
+                        remove(it)
+                    }.let { json -> JsonObject(json) }
+                    every { mockPresentationJwt.payloadJson } returns payloadJson
 
-                    useCase(mockRequestObject).assertErrorType(CredentialPresentationError.Unexpected::class)
+                    useCase(
+                        VerificationProcessType.NETWORK,
+                        mockRequestObject
+                    ).assertErrorType(CredentialPresentationError.Unexpected::class)
                 }
             }
         }
     }
 
     @Test
-    fun `Request object jwt missing client_id returns an error`() = runTest {
-        coEvery { mockRequestObject.jwt } returns Jwt(JWT_MISSING_CLIENT_ID)
-
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.Unexpected::class)
-    }
-
-    @Test
     fun `Request object clientId not matching jwt client_id returns an error`() = runTest {
         coEvery { mockRequestObject.clientId } returns "other client id"
 
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.Unexpected::class)
-    }
-
-    @Test
-    fun `Request object jwt missing response_uri claim returns an error`() = runTest {
-        coEvery { mockRequestObject.jwt } returns Jwt(JWT_MISSING_RESPONSE_URI)
-
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.Unexpected::class)
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
     }
 
     @Test
     fun `Request object jwt with an invalid jwt alg header returns an invalid presentation error`() = runTest {
-        coEvery { mockPresentationJwt.algorithm } returns INVALID_JWT_ALGORITHM
+        every { mockPresentationJwt.algorithm } returns INVALID_JWT_ALGORITHM
 
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
     }
 
     @Test
-    fun `Request object jwt missing kid header returns an invalid presentation error`(): Unit = runTest {
-        coEvery { mockPresentationJwt.keyId } returns null
+    fun `Request object jwt missing kid header over network returns an invalid presentation error`(): Unit = runTest {
+        every { mockPresentationJwt.keyId } returns null
 
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
     }
 
     @Test
     fun `Request object jwt that is not yet valid returns an invalid presentation error`() = runTest {
-        coEvery { mockRequestObject.jwt } returns Jwt(MockPresentationRequest.NOT_YET_VALID_JWT)
+        every { mockPresentationJwt.jwtValidity } returns Validity.NotYetValid(Instant.now())
 
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
     }
 
     @Test
     fun `Request object jwt that is expired returns an invalid presentation error`() = runTest {
-        coEvery { mockRequestObject.jwt } returns Jwt(MockPresentationRequest.EXPIRED_JWT)
+        every { mockPresentationJwt.jwtValidity } returns Validity.Expired(Instant.now())
 
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
+    }
+
+    @Test
+    fun `Request object jwt with other aud claim returns error`() = runTest {
+        val payloadJson = MockPresentationRequest.authorizationRequest.toJsonObject().toMutableMap().apply {
+            put("aud", JsonPrimitive("otherAudience"))
+        }.let { JsonObject(it) }
+        every { mockPresentationJwt.payloadJson } returns payloadJson
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
     }
 
     @Test
@@ -146,76 +340,79 @@ class ValidatePresentationRequestImplTest {
             mockVerifyRequestObjectSignature(any(), any())
         } returns Err(VcSdJwtError.InvalidJwt)
 
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
+    }
+
+    @Test
+    fun `ATTESTATION_UNTRUSTED verification outcome over network returns an UnknownVerifier error`() = runTest {
+        coEvery {
+            mockVerifyRequestObjectSignature(any(), any())
+        } returns Ok(RequestObjectVerificationOutcome.ATTESTATION_UNTRUSTED)
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.UnknownVerifier::class)
+    }
+
+    @Test
+    fun `verifier_attestation client_id over network returns an InvalidRequest error`() = runTest {
+        mockProximity()
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject)
+            .assertErrorType(CredentialPresentationError.InvalidRequest::class)
+    }
+
+    @Test
+    fun `Request object jwt containing an authorization request with the transaction_data field returns an error`() = runTest {
+        every { mockPresentationJwt.payloadJson } returns
+            MockPresentationRequest.authorizationRequest.copy(transactionData = "data").toJsonObject()
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject)
+            .assertErrorType(CredentialPresentationError.InvalidTransactionData::class)
     }
 
     @Test
     fun `Request object jwt containing an invalid authorization request returns an error`() = runTest {
-        coEvery { mockRequestObject.jwt } returns Jwt(JWT_CONTAINING_INVALID_AUTHORIZATION_REQUEST)
+        every { mockPresentationJwt.payloadJson } returns JsonObject(mapOf("invalid" to JsonPrimitive("data")))
 
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.Unexpected::class)
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.Unexpected::class)
     }
 
-    // authorization request validation
     @Test
     fun `Authorization request with an invalid response_type (something else than 'vp_token') returns an invalid presentation error`() =
         runTest {
-            val presentationJson = MockPresentationRequest.authorizationRequest
-                .copy(responseType = INVALID_RESPONSE_TYPE)
-                .toJsonObject()
+            every { mockPresentationJwt.payloadJson } returns
+                MockPresentationRequest.authorizationRequest.copy(responseType = INVALID_RESPONSE_TYPE).toJsonObject()
 
-            coEvery { mockPresentationJwt.payloadJson } returns presentationJson
-
-            useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
+            useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
         }
 
     @Test
     fun `Authorization request with an invalid response_mode returns an invalid presentation error`() =
         runTest {
-            val presentationJson = MockPresentationRequest.authorizationRequest
-                .copy(responseMode = INVALID_RESPONSE_MODE)
-                .toJsonObject()
-            coEvery { mockPresentationJwt.payloadJson } returns presentationJson
+            every { mockPresentationJwt.payloadJson } returns
+                MockPresentationRequest.authorizationRequest.copy(responseMode = INVALID_RESPONSE_MODE).toJsonObject()
 
-            useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
+            useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
         }
 
     @Test
-    fun `Authorization request with response_mode 'direct_post(dot)jwt' but missing client metadata returns an invalid presentation error`() =
+    fun `Authorization request without client metadata returns an invalid presentation error`() =
         runTest {
-            val presentationJson = MockPresentationRequest.authorizationRequest
-                .copy(responseMode = DIRECT_POST_JWT)
-                .toJsonObject()
-            coEvery { mockPresentationJwt.payloadJson } returns presentationJson
+            every { mockPresentationJwt.payloadJson } returns
+                MockPresentationRequest.authorizationRequest.copy(clientMetaData = null).toJsonObject()
 
-            useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
+            useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
         }
 
     @Test
-    fun `Authorization request with response_mode 'direct_post(dot)jwt' and client metadata returns success`() =
+    fun `Authorization request without jwks on client metadata returns an invalid presentation error`() =
         runTest {
-            val presentationJson = MockPresentationRequest.authorizationRequest
-                .copy(
-                    responseMode = DIRECT_POST_JWT,
-                    clientMetaData = ClientMetaData(
-                        clientNameList = emptyList(),
-                        logoUriList = emptyList(),
-                    )
-                )
-                .toJsonObject()
-            coEvery { mockPresentationJwt.payloadJson } returns presentationJson
+            val clientMetadata =
+                ClientMetaData(clientNameList = emptyList(), logoUriList = emptyList(), jwks = Jwks(emptyList()))
+            every { mockPresentationJwt.payloadJson } returns
+                MockPresentationRequest.authorizationRequest.copy(clientMetaData = clientMetadata).toJsonObject()
 
-            useCase(mockRequestObject).assertOk()
+            useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
         }
-
-    @Test
-    fun `Authorization request with empty input descriptor fields returns an invalid presentation error`(): Unit = runTest {
-        every {
-            mockPresentationJwt.payloadJson
-        } returns MockPresentationRequest.invalidPresentationRequestFields().toJsonObject()
-
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
-    }
 
     @Test
     fun `Authorization request with empty DCQL query claims returns an invalid presentation error`(): Unit = runTest {
@@ -223,71 +420,119 @@ class ValidatePresentationRequestImplTest {
             mockPresentationJwt.payloadJson
         } returns MockPresentationRequest.invalidPresentationRequestClaims().toJsonObject()
 
-        useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
     }
 
     @Test
-    fun `Authorization request with missing presentation definition and missing DCQL query returns an invalid presentation error`(): Unit =
+    fun `Authorization request with missing DCQL query returns an invalid presentation error`(): Unit =
         runTest {
             every {
                 mockPresentationJwt.payloadJson
-            } returns MockPresentationRequest.invalidPresentationRequestPresentationRequestDCQL().toJsonObject()
+            } returns MockPresentationRequest.invalidPresentationRequestNoDCQL().toJsonObject()
 
-            useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
+            useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
         }
 
-    @TestFactory
-    fun `Invalid constrain paths should throw error`(): List<DynamicTest> {
-        val invalidConstrainPaths = listOf(
-            listOf("$..book[?(@.price <= $['expensive'])]"),
-            listOf("$..book[ ?(@.price <= $['expensive'])]"),
-            listOf("$..book[\t?(@.isbn)]"),
-            listOf("$..book[        ?(@.isbn)]"),
-            listOf("$..book[?(@.author =~ /.*REES/i)]"),
-            listOf("valid.path", "$..book[?(@.isbn)]"),
-            listOf("$..book[?(@.isbn)]", "valid.path"),
-            listOf("valid.path", "$..book[?(@.isbn)]", "valid.path"),
-        )
-        return invalidConstrainPaths.map { paths ->
-            DynamicTest.dynamicTest("$paths contains an invalid contrains path") {
-                runTest {
-                    every {
-                        mockPresentationJwt.payloadJson
-                    } returns MockPresentationRequest.invalidPresentationRequestPath(paths).toJsonObject()
+    @Test
+    fun `DCQL Authorization request not using holder binding and missing state returns an invalid presentation error`(): Unit = runTest {
+        every {
+            mockPresentationJwt.payloadJson
+        } returns MockPresentationRequest.invalidPresentationRequestState().toJsonObject()
 
-                    useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
-                }
-            }
-        }
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
     }
 
     @Test
-    @Disabled
-    fun `Authorization request not using holder binding missing state returns an invalid presentation error`(): Unit =
-        runTest {
-            every {
-                mockPresentationJwt.payloadJson
-            } returns MockPresentationRequest.invalidPresentationRequestState().toJsonObject()
+    fun `Verifier with EXTERNAL actor environment returns UnknownRegistry error`() = runTest {
+        coEvery { mockGetActorEnvironment(any()) } returns ActorEnvironment.EXTERNAL
 
-            useCase(mockRequestObject).assertErrorType(CredentialPresentationError.InvalidPresentation::class)
-        }
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.UnknownRegistry::class)
+    }
 
-    private fun setupDefaultMocks() {
-        coEvery { mockRequestObject.jwt } returns mockPresentationJwt
-        coEvery { mockRequestObject.clientId } returns CLIENT_ID
+    @Test
+    fun `Proximity request without DCQL query returns an invalid presentation error`() = runTest {
+        val authRequest = MockPresentationRequest.authorizationRequestDcApi.copy(dcqlQuery = null)
+        every { mockPresentationJwt.payloadJson } returns authRequest.toJsonObject()
 
-        coEvery { mockEnvironmentSetupRepository.attestationsServiceTrustedDids } returns emptyList()
+        useCase(VerificationProcessType.PROXIMITY, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
+    }
 
-        coEvery { mockVerifyRequestObjectSignature(any(), any()) } returns Ok(Unit)
+    @Test
+    fun `Authorization request with both JAR DCQL query and scope returns an error`() = runTest {
+        every { mockPresentationJwt.payloadJson } returns
+            MockPresentationRequest.authorizationRequestWithoutVqPS.copy(scope = "openid").toJsonObject()
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
+    }
+
+    @Test
+    fun `Authorization request with mismatching scope returns an error`() = runTest {
+        every { mockPresentationJwt.payloadJson } returns
+            MockPresentationRequest.authorizationRequest.copy(scope = "other").toJsonObject()
+
+        useCase(VerificationProcessType.NETWORK, mockRequestObject).assertErrorType(CredentialPresentationError.InvalidRequest::class)
     }
 
     private fun AuthorizationRequest.toJsonObject(): JsonObject =
         testSafeJson.json.encodeToJsonElement(value = this).jsonObject
 
+    private fun setupDefaultMocks() {
+        coEvery { mockRequestObject.jwt } returns mockPresentationJwt
+        coEvery { mockRequestObject.clientId } returns CLIENT_ID
+        coEvery {
+            mockProcessIdentityTrustStatement(
+                Jwt(MockPresentationRequest.VALID_IDTS), CLIENT_ID
+            )
+        } returns Ok(mockIdentityTrustStatement)
+        coEvery { mockProcessIdentityTrustStatement(null, CLIENT_ID) } returns Ok(null)
+
+        every { mockPresentationJwt.payloadJson } returns MockPresentationRequest.authorizationRequest.toJsonObject()
+        every { mockPresentationJwt.algorithm } returns SignatureAlgorithm.ES256.stdName
+        every { mockPresentationJwt.keyId } returns KEY_ID
+        every { mockPresentationJwt.jwtValidity } returns Validity.Valid
+        every { mockPresentationJwt.type } returns "oauth-authz-req+jwt"
+
+        coEvery { mockEnvironmentSetupRepository.attestationsServiceTrustedDids } returns mockTrustedDids
+
+        coEvery {
+            mockVerifyRequestObjectSignature(mockRequestObject, mockTrustedDids)
+        } returns Ok(RequestObjectVerificationOutcome.DID_PATH)
+
+        coEvery { mockGetActorEnvironment(CLIENT_ID) } returns ActorEnvironment.PRODUCTION
+
+        val vqPS = mockk<VerificationQueryPublicStatement> {
+            every { request.scope } returns SCOPE
+            every { request.query } returns verifiedDcql
+        }
+        coEvery {
+            mockValidateVerificationQueryPublicStatement(Jwt(MockPresentationRequest.VALID_VQPS), CLIENT_ID)
+        } returns Ok(vqPS)
+    }
+
+    private fun mockProximity(
+        responseUri: String? = "response_uri",
+        keyId: String? = KEY_ID,
+        requestVerificationOutcome: RequestObjectVerificationOutcome = RequestObjectVerificationOutcome.ATTESTATION_TRUSTED,
+    ) {
+        val request = MockPresentationRequest.authorizationRequestDcApi.copy(responseUri = responseUri)
+        val presentationJson = request.toJsonObject()
+        every { mockPresentationJwt.payloadJson } returns presentationJson
+        every { mockPresentationJwt.keyId } returns keyId
+        coEvery {
+            mockVerifyRequestObjectSignature(mockRequestObject, mockTrustedDids)
+        } returns Ok(requestVerificationOutcome)
+        coEvery { mockRequestObject.clientId } returns null
+        coEvery { mockProcessIdentityTrustStatement(null, VERIFIER_ATTESTATION_CLIENT_ID) } returns Ok(null)
+    }
+
     private companion object {
-        const val DIRECT_POST_JWT = "direct_post.jwt"
         const val INVALID_RESPONSE_TYPE = "invalid response_type"
         const val INVALID_RESPONSE_MODE = "invalid response_mode"
         const val INVALID_JWT_ALGORITHM = "HS256"
+        const val KEY_ID = "keyId"
+        const val SCOPE = "scope"
+        val verifiedDcql = mockk<DcqlQuery> {
+            every { credentials } returns MockPresentationRequest.authorizationRequestWithoutVqPS.dcqlQuery?.credentials
+        }
     }
 }

@@ -14,9 +14,13 @@ import io.mockk.MockKAnnotations
 import io.mockk.coEvery
 import io.mockk.impl.annotations.MockK
 import io.mockk.unmockkAll
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
@@ -44,6 +48,7 @@ class UploadAllFilesImplTest {
             mockUploadFileToCase,
             testDispatcher
         )
+        setupDefaultMocks()
     }
 
     @AfterEach
@@ -51,8 +56,7 @@ class UploadAllFilesImplTest {
         unmockkAll()
     }
 
-    @Test
-    fun `Successfully getting a file by caseId returns an Ok`() = runTest(testDispatcher) {
+    private fun setupDefaultMocks() {
         coEvery {
             mockEIdRequestFileRepository.getEIdRequestFileByCaseIdAndFileName(any(), any())
         } returns Ok(mockEIdRequestFile)
@@ -60,10 +64,20 @@ class UploadAllFilesImplTest {
         coEvery { mockEIdRequestFile.data } returns (byteArrayOf())
 
         coEvery {
-            mockUploadFileToCase.invoke(any())
+            mockUploadFileToCase(
+                caseId = any(),
+                fileName = any(),
+                accessToken = any(),
+                contentType = any(),
+                documentData = any(),
+            )
         } returns Ok(Unit)
+    }
 
-        uploadAllFiles(caseId = "", accessToken = "").assertOk()
+    @Test
+    fun `Successfully getting a file by caseId returns an Ok`() = runTest(testDispatcher) {
+        val finalProgress = uploadAllFiles(caseId = "", accessToken = "").toList().last().assertOk()
+        assertEquals(finalProgress.total, finalProgress.completed)
     }
 
     @Test
@@ -73,6 +87,47 @@ class UploadAllFilesImplTest {
             mockEIdRequestFileRepository.getEIdRequestFileByCaseIdAndFileName(any(), any())
         } returns Err(EIdRequestError.Unexpected(exception))
 
-        uploadAllFiles(caseId = "", accessToken = "").assertErrorType(EIdRequestError.FileNotFound::class)
+        uploadAllFiles(caseId = "", accessToken = "").toList().last().assertErrorType(EIdRequestError.FileNotFound::class)
+    }
+
+    @Test
+    fun `Optional files not found are skipped and upload completes successfully`() = runTest(testDispatcher) {
+        coEvery {
+            mockEIdRequestFileRepository.getEIdRequestFileByCaseIdAndFileName(
+                any(),
+                match { it == "metadata.bin" || it == "docRecVideo.mp4" }
+            )
+        } returns Err(EIdRequestError.Unexpected(Exception("not found")))
+        coEvery {
+            mockEIdRequestFileRepository.getEIdRequestFileByCaseIdAndFileName(
+                any(),
+                match { it != "metadata.bin" && it != "docRecVideo.mp4" }
+            )
+        } returns Ok(mockEIdRequestFile)
+        coEvery { mockEIdRequestFile.data } returns byteArrayOf()
+
+        val finalProgress = uploadAllFiles(caseId = "", accessToken = "").toList().last().assertOk()
+        assertEquals(finalProgress.total, finalProgress.completed)
+    }
+
+    @Test
+    fun `Upload failure emits partial progress then error, never reaching 1_0f`() = runTest(testDispatcher) {
+        coEvery { mockEIdRequestFile.data } returns byteArrayOf()
+        coEvery {
+            mockUploadFileToCase(
+                caseId = any(),
+                fileName = match { it == "video.mp4" },
+                accessToken = any(),
+                contentType = any(),
+                documentData = any(),
+            )
+        } returns Err(EIdRequestError.Unexpected(Exception("upload failed")))
+
+        val emissions = uploadAllFiles(caseId = "", accessToken = "").toList()
+
+        assertTrue(emissions.dropLast(1).all { it.isOk })
+        emissions.last().assertErrorType(EIdRequestError.Unexpected::class)
+        val progressValues = emissions.filter { it.isOk }.map { it.assertOk() }
+        assertFalse(progressValues.any { it.completed == it.total })
     }
 }

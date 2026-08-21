@@ -3,11 +3,12 @@ package ch.admin.foitt.wallet.platform.invitation
 import ch.admin.foitt.wallet.platform.appSetupState.domain.usecase.GetFirstCredentialWasAdded
 import ch.admin.foitt.wallet.platform.credentialPresentation.domain.model.CompatibleCredential
 import ch.admin.foitt.wallet.platform.credentialPresentation.domain.model.PresentationRequestWithRaw
+import ch.admin.foitt.wallet.platform.credentialPresentation.domain.model.VerificationProcessType
 import ch.admin.foitt.wallet.platform.credentialPresentation.mock.MockPresentationRequest
 import ch.admin.foitt.wallet.platform.invitation.domain.model.ProcessInvitationResult
 import ch.admin.foitt.wallet.platform.invitation.domain.usecase.HandleInvitationProcessingSuccess
 import ch.admin.foitt.wallet.platform.invitation.domain.usecase.implementation.HandleInvitationProcessingSuccessImpl
-import ch.admin.foitt.wallet.platform.messageEvents.domain.repository.CredentialOfferEventRepository
+import ch.admin.foitt.wallet.platform.messageEvents.domain.repository.CredentialEventRepository
 import ch.admin.foitt.wallet.platform.navigation.NavigationManager
 import ch.admin.foitt.wallet.platform.navigation.domain.model.Destination
 import io.mockk.MockKAnnotations
@@ -29,7 +30,7 @@ class HandleInvitationProcessingSuccessTest {
     private lateinit var mockNavigationManager: NavigationManager
 
     @MockK
-    private lateinit var mockCredentialOfferEventRepository: CredentialOfferEventRepository
+    private lateinit var mockCredentialEventRepository: CredentialEventRepository
 
     @MockK
     private lateinit var mockFirstCredentialWasAdded: GetFirstCredentialWasAdded
@@ -41,12 +42,12 @@ class HandleInvitationProcessingSuccessTest {
         MockKAnnotations.init(this)
 
         coEvery { mockNavigationManager.replaceCurrentWith(any()) } just runs
-        coEvery { mockCredentialOfferEventRepository.setEvent(any()) } just runs
+        coEvery { mockCredentialEventRepository.setEvent(any()) } just runs
         coEvery { mockFirstCredentialWasAdded() } returns true
 
         handleInvitationProcessingSuccess = HandleInvitationProcessingSuccessImpl(
             navManager = mockNavigationManager,
-            credentialOfferEventRepository = mockCredentialOfferEventRepository,
+            credentialEventRepository = mockCredentialEventRepository,
         )
     }
 
@@ -69,18 +70,21 @@ class HandleInvitationProcessingSuccessTest {
     }
 
     companion object {
-        private val mockPresentationRequest = MockPresentationRequest.authorizationRequest
+        private val mockPresentationRequest = MockPresentationRequest.authorizationRequestWithoutVqPS
         private val mockCredentialOfferResult = ProcessInvitationResult.CredentialOffer(0L)
         private const val RAW_JWT = "rawJwt"
 
         private val mockCompatibleCredential = CompatibleCredential(
             credentialId = mockCredentialOfferResult.credentialId,
-            requestedFields = listOf(),
+            presentationPaths = listOf(),
+            dcqlQueryId = "1"
         )
 
         private val mockPresentationRequestWithRaw = PresentationRequestWithRaw(
             mockPresentationRequest,
             RAW_JWT,
+            VerificationProcessType.NETWORK,
+            dcqlQuery = mockPresentationRequest.dcqlQuery!!,
         )
 
         private val mockPresentationRequestResult = ProcessInvitationResult.PresentationRequest(

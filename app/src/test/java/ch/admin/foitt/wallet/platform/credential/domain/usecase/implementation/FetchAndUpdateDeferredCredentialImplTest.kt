@@ -1,9 +1,10 @@
 package ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation
 
-import ch.admin.foitt.openid4vc.domain.model.CredentialRequestType
+import ch.admin.foitt.openid4vc.domain.model.TokenType
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.CredentialOfferError
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.CredentialResponse
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.FetchDeferredCredentialError
+import ch.admin.foitt.openid4vc.domain.model.credentialoffer.IssuerNonce
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.TokenResponse
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialFormat
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialRequestEncryption
@@ -11,22 +12,30 @@ import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.Credential
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.IssuerConfiguration
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.IssuerCredentialInfo
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.RawAndParsedIssuerCredentialInfo
-import ch.admin.foitt.openid4vc.domain.model.payloadEncryption.PayloadEncryptionType
+import ch.admin.foitt.openid4vc.domain.model.jwt.Jwt
+import ch.admin.foitt.openid4vc.domain.model.payloadEncryption.PayloadEncryption
 import ch.admin.foitt.openid4vc.domain.usecase.CreateCredentialRequest
+import ch.admin.foitt.openid4vc.domain.usecase.CreateDPoPProofJwt
 import ch.admin.foitt.openid4vc.domain.usecase.FetchIssuerConfiguration
+import ch.admin.foitt.openid4vc.domain.usecase.FetchRawAndParsedIssuerCredentialInfo
+import ch.admin.foitt.openid4vc.domain.usecase.GetSignedMetadataDid
 import ch.admin.foitt.wallet.platform.credential.domain.model.CredentialError
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.FetchAndUpdateDeferredCredential
-import ch.admin.foitt.wallet.platform.credential.domain.usecase.FetchExistingIssuerCredentialInfo
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.SaveCredentialFromDeferred
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.UpdateDeferredCredential
+import ch.admin.foitt.wallet.platform.credentialRefresh.domain.usecase.GetBindingKeyPair
 import ch.admin.foitt.wallet.platform.database.domain.model.Credential
+import ch.admin.foitt.wallet.platform.database.domain.model.CredentialAuthenticationEntity
+import ch.admin.foitt.wallet.platform.database.domain.model.CredentialAuthenticationWithDpopBinding
 import ch.admin.foitt.wallet.platform.database.domain.model.DeferredCredentialEntity
-import ch.admin.foitt.wallet.platform.database.domain.model.DeferredCredentialWithKeyBinding
+import ch.admin.foitt.wallet.platform.database.domain.model.DeferredCredentialWithAuthenticationAndKeyBinding
 import ch.admin.foitt.wallet.platform.database.domain.model.DeferredProgressionState
-import ch.admin.foitt.wallet.platform.environmentSetup.domain.repository.EnvironmentSetupRepository
 import ch.admin.foitt.wallet.platform.payloadEncryption.domain.model.PayloadEncryptionError
-import ch.admin.foitt.wallet.platform.payloadEncryption.domain.usecase.GetPayloadEncryptionType
+import ch.admin.foitt.wallet.platform.payloadEncryption.domain.usecase.GetPayloadEncryption
 import ch.admin.foitt.wallet.platform.ssi.domain.repository.DeferredCredentialRepository
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.IdentityV2TrustStatement
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.TrustRegistryError
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.usecase.ProcessIdentityTrustStatement
 import ch.admin.foitt.wallet.util.assertErr
 import ch.admin.foitt.wallet.util.assertErrorType
 import ch.admin.foitt.wallet.util.assertOk
@@ -35,6 +44,7 @@ import com.github.michaelbull.result.Ok
 import io.mockk.MockKAnnotations
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.impl.annotations.MockK
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
@@ -57,16 +67,25 @@ class FetchAndUpdateDeferredCredentialImplTest {
     private lateinit var mockDeferredCredentialRepository: DeferredCredentialRepository
 
     @MockK
-    private lateinit var mockFetchExistingIssuerCredentialInfo: FetchExistingIssuerCredentialInfo
+    private lateinit var mockFetchRawAndParsedIssuerCredentialInfo: FetchRawAndParsedIssuerCredentialInfo
 
     @MockK
-    private lateinit var mockEnvironmentSetupRepository: EnvironmentSetupRepository
-
-    @MockK
-    private lateinit var mockGetPayloadEncryptionType: GetPayloadEncryptionType
+    private lateinit var mockGetPayloadEncryption: GetPayloadEncryption
 
     @MockK
     private lateinit var mockCreateCredentialRequest: CreateCredentialRequest
+
+    @MockK
+    private lateinit var mockGetSignedMetadataDid: GetSignedMetadataDid
+
+    @MockK
+    private lateinit var mockProcessIdentityTrustStatement: ProcessIdentityTrustStatement
+
+    @MockK
+    private lateinit var mockCreateDPoPProofJwt: CreateDPoPProofJwt
+
+    @MockK
+    private lateinit var mockGetBindingKeyPair: GetBindingKeyPair
 
     @MockK
     private lateinit var mockOidCredentialOfferRepository: OidCredentialOfferRepository
@@ -93,10 +112,16 @@ class FetchAndUpdateDeferredCredentialImplTest {
     private lateinit var mockCredentialResponseEncryption: CredentialResponseEncryption
 
     @MockK
-    private lateinit var mockPayloadEncryptionType: PayloadEncryptionType
+    private lateinit var mockPayloadEncryption: PayloadEncryption
 
     @MockK
-    private lateinit var mockCredentialRequestType: CredentialRequestType
+    private lateinit var mockCredentialIssuerInfoJwt: Jwt
+
+    @MockK
+    private lateinit var mockIdentityJwt: Jwt
+
+    @MockK
+    private lateinit var mockIdentityTrustStatement: IdentityV2TrustStatement
 
     private lateinit var useCase: FetchAndUpdateDeferredCredential
 
@@ -108,10 +133,13 @@ class FetchAndUpdateDeferredCredentialImplTest {
 
         useCase = FetchAndUpdateDeferredCredentialImpl(
             deferredCredentialRepository = mockDeferredCredentialRepository,
-            fetchExistingIssuerCredentialInfo = mockFetchExistingIssuerCredentialInfo,
-            environmentSetupRepository = mockEnvironmentSetupRepository,
-            getPayloadEncryptionType = mockGetPayloadEncryptionType,
+            fetchRawAndParsedIssuerCredentialInfo = mockFetchRawAndParsedIssuerCredentialInfo,
+            getPayloadEncryption = mockGetPayloadEncryption,
             createCredentialRequest = mockCreateCredentialRequest,
+            getSignedMetadataDid = mockGetSignedMetadataDid,
+            processIdentityTrustStatement = mockProcessIdentityTrustStatement,
+            createDPoPProofJwt = mockCreateDPoPProofJwt,
+            getBindingKeyPair = mockGetBindingKeyPair,
             oidCredentialOfferRepository = mockOidCredentialOfferRepository,
             saveCredentialFromDeferred = mockSaveCredentialFromDeferred,
             updateDeferredCredential = mockUpdateDeferredCredential,
@@ -127,26 +155,41 @@ class FetchAndUpdateDeferredCredentialImplTest {
     }
 
     private fun setupDefaultMocks() {
-        coEvery { mockEnvironmentSetupRepository.payloadEncryptionEnabled } returns true
-
         coEvery {
-            mockFetchExistingIssuerCredentialInfo(any())
+            mockFetchRawAndParsedIssuerCredentialInfo(issuerEndpoint = issuerUrl, forceRefresh = true)
         } returns Ok(mockRawAndParsedIssuerCredentialInfo)
 
         coEvery { mockRawAndParsedIssuerCredentialInfo.issuerCredentialInfo } returns mockIssuerCredentialInfo
+        every { mockRawAndParsedIssuerCredentialInfo.rawIssuerCredentialInfo } returns mockCredentialIssuerInfoJwt
+        every { mockIssuerCredentialInfo.nonceEndpoint } returns NONCE_URL
         coEvery { mockIssuerCredentialInfo.credentialRequestEncryption } returns mockCredentialRequestEncryption
         coEvery { mockIssuerCredentialInfo.credentialResponseEncryption } returns mockCredentialResponseEncryption
+        every { mockIssuerCredentialInfo.identityTrustStatement } returns mockIdentityJwt
 
         coEvery {
-            mockGetPayloadEncryptionType(any(), any())
-        } returns Ok(mockPayloadEncryptionType)
+            mockGetPayloadEncryption(mockCredentialRequestEncryption, mockCredentialResponseEncryption)
+        } returns Ok(mockPayloadEncryption)
 
         coEvery {
-            mockCreateCredentialRequest(any(), any())
-        } returns Ok(mockCredentialRequestType)
+            mockCreateCredentialRequest(mockPayloadEncryption, any())
+        } returns Ok(CREDENTIAL_REQUEST)
+
+        coEvery { mockGetSignedMetadataDid(mockCredentialIssuerInfoJwt) } returns Ok(ISSUER_DID)
 
         coEvery {
-            mockOidCredentialOfferRepository.fetchDeferredCredential(any(), any(), any(), any())
+            mockProcessIdentityTrustStatement(mockIdentityJwt, ISSUER_DID)
+        } returns Ok(mockIdentityTrustStatement)
+
+        coEvery {
+            mockOidCredentialOfferRepository.fetchNonce(NONCE_URL)
+        } returns Ok(mockIssuerNonce)
+
+        coEvery {
+            mockGetBindingKeyPair(any())
+        } returns Ok(null)
+
+        coEvery {
+            mockOidCredentialOfferRepository.fetchDeferredCredential(any(), any(), any(), any(), any(), any())
         } returns Ok(deferredCredentialResponse01)
 
         coEvery {
@@ -154,7 +197,7 @@ class FetchAndUpdateDeferredCredentialImplTest {
         } returns Ok(Unit)
 
         coEvery {
-            mockSaveCredentialFromDeferred(any(), any(), any())
+            mockSaveCredentialFromDeferred(any(), any(), any(), any())
         } returns Ok(CREDENTIAL_ID_01)
 
         coEvery {
@@ -170,7 +213,7 @@ class FetchAndUpdateDeferredCredentialImplTest {
         } returns Ok(1)
 
         coEvery {
-            mockOidCredentialOfferRepository.fetchAccessTokenByRefreshToken(any(), any())
+            mockOidCredentialOfferRepository.fetchAccessTokenByRefreshToken(any(), any(), any())
         } returns Ok(tokenResponse)
     }
 
@@ -178,8 +221,8 @@ class FetchAndUpdateDeferredCredentialImplTest {
     fun `Error during fetching the issuer credential information is mapped`() = runTest {
         val exception = Exception("my exception")
         coEvery {
-            mockFetchExistingIssuerCredentialInfo(any())
-        } returns Err(CredentialError.Unexpected(exception))
+            mockFetchRawAndParsedIssuerCredentialInfo(any(), any())
+        } returns Err(CredentialOfferError.Unexpected(exception))
 
         val error = useCase(deferredCredentialWithBinding01).assertErrorType(CredentialError.Unexpected::class)
 
@@ -190,7 +233,7 @@ class FetchAndUpdateDeferredCredentialImplTest {
     fun `Error during getting of payload encryption type is mapped`() = runTest {
         val exception = Exception("my exception")
         coEvery {
-            mockGetPayloadEncryptionType(any(), any())
+            mockGetPayloadEncryption(any(), any())
         } returns Err(PayloadEncryptionError.Unexpected(exception))
 
         val error = useCase(deferredCredentialWithBinding01).assertErrorType(CredentialError.Unexpected::class)
@@ -210,11 +253,35 @@ class FetchAndUpdateDeferredCredentialImplTest {
         assertEquals(exception, error.cause)
     }
 
+    @Test
+    fun `Error during getting the issuer credential info did is mapped`() = runTest {
+        val exception = Exception("signed metadata error")
+        coEvery {
+            mockGetSignedMetadataDid(any())
+        } returns Err(CredentialOfferError.Unexpected(exception))
+
+        val error = useCase(deferredCredentialWithBinding01).assertErrorType(CredentialError.Unexpected::class)
+
+        assertEquals(exception, error.cause)
+    }
+
+    @Test
+    fun `Error during identity trust statement processing is mapped to unverified issuer`() = runTest {
+        val exception = Exception("trust error")
+        coEvery {
+            mockProcessIdentityTrustStatement(any(), any())
+        } returns Err(TrustRegistryError.Unexpected(exception))
+
+        useCase(deferredCredentialWithBinding01).assertErrorType(CredentialError.UnverifiedIssuer::class)
+    }
+
     @ParameterizedTest
     @MethodSource("invalidatingErrors")
     fun `Specific deferred credential issuer backend errors invalidate the credential`(error: FetchDeferredCredentialError) = runTest {
         coEvery {
             mockOidCredentialOfferRepository.fetchDeferredCredential(
+                any(),
+                any(),
                 any(),
                 any(),
                 any(),
@@ -243,6 +310,8 @@ class FetchAndUpdateDeferredCredentialImplTest {
                 any(),
                 any(),
                 any(),
+                any(),
+                any(),
             )
         } returns Err(error)
 
@@ -266,6 +335,8 @@ class FetchAndUpdateDeferredCredentialImplTest {
                 ACCESS_TOKEN_01,
                 any(),
                 any(),
+                any(),
+                any(),
             )
         } returns Err(CredentialOfferError.InvalidToken)
 
@@ -275,6 +346,8 @@ class FetchAndUpdateDeferredCredentialImplTest {
                 ACCESS_TOKEN_02,
                 any(),
                 any(),
+                any(),
+                any(),
             )
         } returns Ok(deferredCredentialResponse01)
 
@@ -282,6 +355,8 @@ class FetchAndUpdateDeferredCredentialImplTest {
 
         coVerify(exactly = 2) {
             mockOidCredentialOfferRepository.fetchDeferredCredential(
+                any(),
+                any(),
                 any(),
                 any(),
                 any(),
@@ -326,22 +401,26 @@ class FetchAndUpdateDeferredCredentialImplTest {
         private const val ACCESS_TOKEN_01 = "accessToken01"
         private const val ACCESS_TOKEN_02 = "accessToken02"
         private const val REFRESH_TOKEN_01 = "refreshToken01"
-        private const val ISSUER_URL = "https://example.com/issuer"
+        private const val ISSUER_URL_STRING = "https://example.com/issuer"
+        private val issuerUrl = URL(ISSUER_URL_STRING)
+        private val NONCE_URL = URL("https://example.com/nonce")
+        private const val C_NONCE = "cNonce"
+        private const val DPOP_NONCE = "dpopNonce"
+        private const val ISSUER_DID = "issuer did"
         private const val CREDENTIAL_ID_01 = 1L
+        private const val CREDENTIAL_REQUEST = "credentialRequest"
         private val currentTime = Instant.ofEpochSecond(15L).epochSecond
 
         private val issuerConfig = IssuerConfiguration(
             tokenEndpoint = URL("https://example.com/token"),
-            issuer = URL(ISSUER_URL),
+            issuer = issuerUrl,
         )
 
         private val deferredCredentialEntity01 = DeferredCredentialEntity(
             credentialId = CREDENTIAL_ID_01,
             progressionState = DeferredProgressionState.IN_PROGRESS,
             transactionId = TRANSACTION_ID_01,
-            accessToken = ACCESS_TOKEN_01,
-            refreshToken = REFRESH_TOKEN_01,
-            endpoint = ISSUER_URL,
+            endpoint = ISSUER_URL_STRING,
             pollInterval = 10,
             createdAt = Instant.now().epochSecond,
             polledAt = Instant.now().epochSecond,
@@ -352,13 +431,22 @@ class FetchAndUpdateDeferredCredentialImplTest {
             format = CredentialFormat.VC_SD_JWT,
             createdAt = Instant.now().epochSecond,
             selectedConfigurationId = "configId",
-            issuerUrl = URL(ISSUER_URL)
+            issuerUrl = issuerUrl
         )
 
-        private val deferredCredentialWithBinding01 = DeferredCredentialWithKeyBinding(
+        private val deferredCredentialWithBinding01 = DeferredCredentialWithAuthenticationAndKeyBinding(
             deferredCredential = deferredCredentialEntity01,
             credential = credentialEntity01,
             keyBindings = emptyList(),
+            authentication = CredentialAuthenticationWithDpopBinding(
+                credentialAuthentication = CredentialAuthenticationEntity(
+                    credentialId = credentialEntity01.id,
+                    tokenType = TokenType.BEARER,
+                    accessToken = ACCESS_TOKEN_01,
+                    refreshToken = REFRESH_TOKEN_01,
+                ),
+                dpopBinding = null,
+            )
         )
 
         private val deferredCredentialResponse01 = CredentialResponse.DeferredCredential(
@@ -369,7 +457,12 @@ class FetchAndUpdateDeferredCredentialImplTest {
         private val tokenResponse = TokenResponse(
             accessToken = ACCESS_TOKEN_02,
             refreshToken = REFRESH_TOKEN_01,
-            tokenType = "tokenType"
+            tokenType = TokenType.BEARER,
+        )
+
+        private val mockIssuerNonce = IssuerNonce(
+            cNonce = C_NONCE,
+            dpopNonce = DPOP_NONCE,
         )
     }
 }

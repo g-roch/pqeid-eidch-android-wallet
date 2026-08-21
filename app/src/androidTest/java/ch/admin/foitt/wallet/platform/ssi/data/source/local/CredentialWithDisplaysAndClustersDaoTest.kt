@@ -87,6 +87,7 @@ class CredentialWithDisplaysAndClustersDaoTest {
 
         val expected = VerifiableCredentialWithDisplaysAndClusters(
             verifiableCredential = verifiableCredential1,
+            credential = credential1,
             credentialDisplays = listOf(credentialDisplay1),
             clusters = listOf(
                 ClusterWithDisplaysAndClaims(
@@ -102,6 +103,7 @@ class CredentialWithDisplaysAndClustersDaoTest {
                     )
                 )
             ),
+            bundleItems = emptyList(),
         )
 
         assertEquals(expected, credentialWithDisplaysAndClaims)
@@ -127,7 +129,6 @@ class CredentialWithDisplaysAndClustersDaoTest {
                 if (credentialWithDisplaysAndClusters != null) {
                     credentialDao.deleteById(credential1.id)
                 }
-
             }
         }
 
@@ -135,6 +136,7 @@ class CredentialWithDisplaysAndClustersDaoTest {
 
         val expected = VerifiableCredentialWithDisplaysAndClusters(
             verifiableCredential = verifiableCredential1,
+            credential = credential1,
             credentialDisplays = listOf(credentialDisplay1),
             clusters = listOf(
                 ClusterWithDisplaysAndClaims(
@@ -150,6 +152,7 @@ class CredentialWithDisplaysAndClustersDaoTest {
                     )
                 )
             ),
+            bundleItems = emptyList(),
         )
 
         assertEquals(2, collectedCredentialWithDisplaysAndClusters.size)
@@ -179,6 +182,7 @@ class CredentialWithDisplaysAndClustersDaoTest {
 
         val expected1 = VerifiableCredentialWithDisplaysAndClusters(
             verifiableCredential = verifiableCredential1,
+            credential = credential1,
             credentialDisplays = listOf(credentialDisplay1),
             clusters = listOf(
                 ClusterWithDisplaysAndClaims(
@@ -194,10 +198,12 @@ class CredentialWithDisplaysAndClustersDaoTest {
                     )
                 )
             ),
+            bundleItems = emptyList(),
         )
 
         val expected2 = VerifiableCredentialWithDisplaysAndClusters(
             verifiableCredential = verifiableCredential2,
+            credential = credential2,
             credentialDisplays = listOf(credentialDisplay2),
             clusters = listOf(
                 ClusterWithDisplaysAndClaims(
@@ -213,6 +219,7 @@ class CredentialWithDisplaysAndClustersDaoTest {
                     )
                 )
             ),
+            bundleItems = emptyList(),
         )
 
         assertEquals(2, credentialWithDisplaysAndClusters?.size)

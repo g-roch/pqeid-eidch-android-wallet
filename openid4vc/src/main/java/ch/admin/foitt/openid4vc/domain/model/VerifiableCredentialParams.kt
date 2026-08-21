@@ -8,11 +8,12 @@ import java.net.URL
 data class VerifiableCredentialParams(
     val proofTypeConfig: ProofTypeConfig?,
     val tokenEndpoint: URL,
+    val dpopSigningAlgValuesSupported: List<SigningAlgorithm>?,
     val grants: Grant,
     val issuerEndpoint: URL,
     val credentialEndpoint: URL,
     val deferredCredentialEndpoint: URL?,
     val credentialConfiguration: AnyCredentialConfiguration,
-    val nonceEndpoint: URL?,
+    val nonceEndpoint: URL,
     val isBatch: Boolean,
 )

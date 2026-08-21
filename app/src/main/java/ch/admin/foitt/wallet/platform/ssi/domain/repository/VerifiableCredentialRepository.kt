@@ -8,9 +8,13 @@ import com.github.michaelbull.result.Result
 interface VerifiableCredentialRepository {
     suspend fun getAllIds(): Result<List<Long>, VerifiableCredentialRepositoryError>
     suspend fun getById(id: Long): Result<VerifiableCredentialEntity, VerifiableCredentialRepositoryError>
-    suspend fun onBundleItemUpdate(id: Long): Result<Int, VerifiableCredentialRepositoryError>
     suspend fun updateProgressionStateByCredentialId(
         credentialId: Long,
         progressionState: VerifiableProgressionState
+    ): Result<Int, VerifiableCredentialRepositoryError>
+
+    suspend fun updateNextBundleIdByCredentialId(
+        credentialId: Long,
+        nextPresentableBundleItemId: Long
     ): Result<Int, VerifiableCredentialRepositoryError>
 }

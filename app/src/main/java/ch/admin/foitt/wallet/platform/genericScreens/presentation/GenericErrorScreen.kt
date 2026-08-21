@@ -1,18 +1,16 @@
 package ch.admin.foitt.wallet.platform.genericScreens.presentation
 
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import ch.admin.foitt.wallet.R
+import ch.admin.foitt.wallet.platform.composables.AdaptiveBottomButtonBar
 import ch.admin.foitt.wallet.platform.composables.Buttons
 import ch.admin.foitt.wallet.platform.composables.presentation.ScreenMainImage
 import ch.admin.foitt.wallet.platform.composables.presentation.layout.ScrollableColumnWithPicture
 import ch.admin.foitt.wallet.platform.composables.presentation.layout.WalletLayouts
-import ch.admin.foitt.wallet.platform.genericScreens.domain.model.GenericErrorScreenState
 import ch.admin.foitt.wallet.platform.preview.WalletAllScreenPreview
 import ch.admin.foitt.wallet.theme.Sizes
 import ch.admin.foitt.wallet.theme.WalletTexts
@@ -23,35 +21,41 @@ fun GenericErrorScreen(
     viewModel: GenericErrorViewModel,
 ) {
     GenericErrorScreenContent(
+        image = viewModel.image,
         title = viewModel.title,
         subtitle = viewModel.subtitle,
         errorText = viewModel.errorText,
         errorDescription = viewModel.errorDescription,
-        onBack = viewModel::onBack,
+        onBack = viewModel::onClick,
     )
 }
 
 @Composable
 private fun GenericErrorScreenContent(
+    image: Int,
     title: Int,
     subtitle: Int,
     errorText: String?,
-    errorDescription: Int?,
+    errorDescription: Any?,
     onBack: () -> Unit,
 ) {
     WalletLayouts.ScrollableColumnWithPicture(
         stickyStartContent = {
             ScreenMainImage(
-                iconRes = R.drawable.wallet_ic_cross_circle_colored,
+                iconRes = image,
                 backgroundColor = WalletTheme.colorScheme.surfaceContainerLow,
             )
         },
-        stickyBottomBackgroundColor = Color.Transparent,
         stickyBottomContent = {
-            Buttons.FilledPrimary(
-                text = stringResource(R.string.global_error_backToHome_button),
-                onClick = onBack,
-                modifier = Modifier.fillMaxWidth(),
+            AdaptiveBottomButtonBar(
+                buttons = listOf(
+                    {
+                        Buttons.FilledPrimary(
+                            text = stringResource(R.string.global_error_backToHome_button),
+                            onClick = onBack,
+                        )
+                    },
+                ),
             )
         },
     ) {
@@ -70,9 +74,14 @@ private fun GenericErrorScreenContent(
                 text = it
             )
         }
-        errorDescription?.let {
+        val description = when (errorDescription) {
+            is String -> errorDescription
+            is Int -> stringResource(errorDescription)
+            else -> null
+        }
+        description?.let {
             WalletTexts.BodyLarge(
-                text = stringResource(it),
+                text = it,
             )
         }
     }
@@ -83,9 +92,10 @@ private fun GenericErrorScreenContent(
 private fun GenericErrorScreenPreview() {
     WalletTheme {
         GenericErrorScreenContent(
+            image = R.drawable.wallet_ic_cross_circle_colored,
             title = R.string.presentation_error_title,
             subtitle = R.string.presentation_error_message,
-            errorText = GenericErrorScreenState.INVALID_REQUEST.name.lowercase(),
+            errorText = "invalid_request",
             errorDescription = R.string.tk_credentialOffer_error_invalidRequest_description,
             onBack = {},
         )

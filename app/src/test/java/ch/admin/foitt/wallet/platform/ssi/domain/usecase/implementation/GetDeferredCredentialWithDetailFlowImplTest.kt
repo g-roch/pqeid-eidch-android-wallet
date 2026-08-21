@@ -94,6 +94,7 @@ class GetDeferredCredentialWithDetailFlowImplTest {
     }
 
     private fun setupDefaultMocks() {
+        coEvery { mockAppContext.resources.configuration.isNightModeActive } returns false
         coEvery { mockDeferredCredentialWithDisplaysRepository.getByIdFlow(any()) } returns mockCredentialFlow
         coEvery { mockGetLocalizedAndThemedDisplay(any(), any()) } returns credentialDisplay
     }
@@ -120,8 +121,6 @@ class GetDeferredCredentialWithDetailFlowImplTest {
         private val deferredCredential = DeferredCredentialEntity(
             credentialId = CREDENTIAL_ID,
             transactionId = "transactionId",
-            accessToken = "accessToken",
-            refreshToken = "refreshToken",
             endpoint = ENDPOINT,
         )
 

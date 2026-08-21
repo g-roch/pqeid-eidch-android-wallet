@@ -4,6 +4,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewModelScope
 import ch.admin.foitt.wallet.platform.deeplink.domain.usecase.HandleDeeplink
+import ch.admin.foitt.wallet.platform.login.domain.Constants.MAX_LOGIN_ATTEMPTS
 import ch.admin.foitt.wallet.platform.login.domain.model.CanUseBiometricsForLoginResult
 import ch.admin.foitt.wallet.platform.login.domain.model.LoginError
 import ch.admin.foitt.wallet.platform.login.domain.usecase.CanUseBiometricsForLogin
@@ -20,6 +21,7 @@ import ch.admin.foitt.wallet.platform.scaffold.domain.usecase.SetTopBarState
 import ch.admin.foitt.wallet.platform.scaffold.presentation.ScreenViewModel
 import ch.admin.foitt.wallet.platform.utils.trackCompletion
 import ch.admin.foitt.wallet.platform.versionEnforcement.domain.model.AppVersionInfo
+import ch.admin.foitt.wallet.platform.versionEnforcement.domain.model.EnforcementType
 import ch.admin.foitt.wallet.platform.versionEnforcement.domain.usecase.FetchAppVersionInfo
 import com.github.michaelbull.result.mapBoth
 import dagger.assisted.Assisted
@@ -28,8 +30,10 @@ import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -73,6 +77,10 @@ class PassphraseLoginViewModel @AssistedInject constructor(
 
     private val _loginAttemptsLeft = MutableStateFlow(5)
     val loginAttemptsLeft = _loginAttemptsLeft.asStateFlow()
+
+    val showSupportText: StateFlow<Boolean> = loginAttemptsLeft
+        .map { it < MAX_LOGIN_ATTEMPTS }
+        .toStateFlow(false)
 
     private val _showPassphraseErrorToast = MutableStateFlow(false)
     val showPassphraseErrorToast = _showPassphraseErrorToast.asStateFlow()
@@ -134,18 +142,23 @@ class PassphraseLoginViewModel @AssistedInject constructor(
         if (passphraseInputFieldState.value is PassphraseInputFieldState.Success) {
             val info = appVersionInfo.value // if it is available now, perfect, otherwise it acts like a time-out
             if (info is AppVersionInfo.Blocked) {
-                navigateToAppVersionBlocked(info.title, info.text)
+                navigateToAppVersionBlocked(info.title, info.text, info.playStoreUrl, info.type)
             } else {
                 handleDeeplink()
             }
         }
     }
 
-    private fun navigateToAppVersionBlocked(title: String?, text: String?) {
+    private fun navigateToAppVersionBlocked(title: String?, text: String?, playStoreLink: String?, enforcedType: EnforcementType) {
         Timber.d("AppVersionBlocked: $title, $text")
         navigationManager.popUpToAndNavigate(
             popToInclusive = Destination.PassphraseLoginScreen::class,
-            destination = Destination.AppVersionBlockedScreen(title = title, text = text)
+            destination = Destination.AppVersionBlockedScreen(
+                title = title,
+                text = text,
+                playStoreUrl = playStoreLink,
+                enforcedType = enforcedType
+            )
         )
     }
 

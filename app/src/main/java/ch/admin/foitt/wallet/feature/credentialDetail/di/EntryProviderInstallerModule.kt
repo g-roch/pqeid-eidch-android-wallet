@@ -1,10 +1,14 @@
 package ch.admin.foitt.wallet.feature.credentialDetail.di
 
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import ch.admin.foitt.wallet.feature.credentialDetail.presentation.BatchIssuanceInfoScreen
+import ch.admin.foitt.wallet.feature.credentialDetail.presentation.BatchIssuanceInfoViewModel
 import ch.admin.foitt.wallet.feature.credentialDetail.presentation.CredentialDetailScreen
 import ch.admin.foitt.wallet.feature.credentialDetail.presentation.CredentialDetailViewModel
-import ch.admin.foitt.wallet.feature.credentialDetail.presentation.CredentialDetailWrongDataScreen
-import ch.admin.foitt.wallet.feature.credentialDetail.presentation.CredentialDetailWrongDataViewModel
+import ch.admin.foitt.wallet.feature.credentialDetail.presentation.IssuanceInfoScreen
+import ch.admin.foitt.wallet.feature.credentialDetail.presentation.IssuanceInfoViewModel
+import ch.admin.foitt.wallet.feature.credentialDetail.presentation.UpdateCredentialScreen
+import ch.admin.foitt.wallet.feature.credentialDetail.presentation.UpdateCredentialViewModel
 import ch.admin.foitt.wallet.platform.navigation.domain.model.Destination
 import ch.admin.foitt.wallet.platform.navigation.domain.model.EntryProviderInstaller
 import ch.admin.foitt.wallet.platform.scaffold.presentation.SyncedScaffoldScreen
@@ -21,10 +25,15 @@ object EntryProviderInstallerModule {
     @IntoSet
     @Provides
     fun provideEntryProviderInstaller(): EntryProviderInstaller = {
-        entry<Destination.CredentialDetailWrongDataScreen> {
-            val viewModel = hiltViewModel<CredentialDetailWrongDataViewModel>()
+        entry<Destination.UpdateCredentialScreen> { navKey ->
+            val viewModel =
+                hiltViewModel<UpdateCredentialViewModel, UpdateCredentialViewModel.Factory>(
+                    creationCallback = { factory ->
+                        factory.create(credentialId = navKey.credentialId)
+                    }
+                )
             SyncedScaffoldScreen(viewModel = viewModel) {
-                CredentialDetailWrongDataScreen()
+                UpdateCredentialScreen(viewModel = viewModel)
             }
         }
 
@@ -37,6 +46,24 @@ object EntryProviderInstallerModule {
                 )
             SyncedScaffoldScreen(viewModel = viewModel) {
                 CredentialDetailScreen(viewModel = viewModel)
+            }
+        }
+
+        entry<Destination.IssuanceInfoScreen> {
+            val viewModel = hiltViewModel<IssuanceInfoViewModel>()
+            SyncedScaffoldScreen(viewModel = viewModel) {
+                IssuanceInfoScreen(viewModel)
+            }
+        }
+
+        entry<Destination.BatchIssuanceInfoScreen> { navKey ->
+            val viewModel = hiltViewModel<BatchIssuanceInfoViewModel, BatchIssuanceInfoViewModel.Factory>(
+                creationCallback = { factory ->
+                    factory.create(credentialId = navKey.credentialId)
+                }
+            )
+            SyncedScaffoldScreen(viewModel = viewModel) {
+                BatchIssuanceInfoScreen(viewModel = viewModel)
             }
         }
     }

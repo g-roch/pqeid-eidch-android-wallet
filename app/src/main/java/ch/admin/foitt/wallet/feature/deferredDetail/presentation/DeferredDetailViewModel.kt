@@ -1,6 +1,7 @@
 package ch.admin.foitt.wallet.feature.deferredDetail.presentation
 
 import androidx.lifecycle.viewModelScope
+import ch.admin.foitt.wallet.R
 import ch.admin.foitt.wallet.feature.credentialDetail.domain.model.IssuerDisplay
 import ch.admin.foitt.wallet.feature.credentialDetail.domain.usecase.GetCredentialIssuerDisplaysFlow
 import ch.admin.foitt.wallet.feature.credentialDetail.presentation.composables.VisibleBottomSheet
@@ -13,9 +14,12 @@ import ch.admin.foitt.wallet.platform.credential.presentation.adapter.GetCredent
 import ch.admin.foitt.wallet.platform.database.domain.model.DisplayConst
 import ch.admin.foitt.wallet.platform.database.domain.model.DisplayLanguage
 import ch.admin.foitt.wallet.platform.genericScreens.domain.model.GenericErrorScreenState
+import ch.admin.foitt.wallet.platform.messageEvents.domain.model.CredentialEvent
+import ch.admin.foitt.wallet.platform.messageEvents.domain.repository.CredentialEventRepository
 import ch.admin.foitt.wallet.platform.navigation.NavigationManager
 import ch.admin.foitt.wallet.platform.navigation.domain.model.Destination
-import ch.admin.foitt.wallet.platform.nonCompliance.domain.model.ActorComplianceState
+import ch.admin.foitt.wallet.platform.scaffold.domain.model.TopBarAction
+import ch.admin.foitt.wallet.platform.scaffold.domain.model.TopBarBackground
 import ch.admin.foitt.wallet.platform.scaffold.domain.model.TopBarState
 import ch.admin.foitt.wallet.platform.scaffold.domain.usecase.SetTopBarState
 import ch.admin.foitt.wallet.platform.scaffold.extension.refreshableStateFlow
@@ -23,17 +27,21 @@ import ch.admin.foitt.wallet.platform.scaffold.presentation.ScreenViewModel
 import ch.admin.foitt.wallet.platform.ssi.domain.model.SsiError
 import ch.admin.foitt.wallet.platform.ssi.domain.usecase.DeleteDeferred
 import ch.admin.foitt.wallet.platform.ssi.domain.usecase.GetDeferredCredentialWithDetailFlow
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.ActorComplianceState
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.TrustStatus
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.VcSchemaTrustStatus
+import ch.admin.foitt.wallet.platform.utils.UiString
 import ch.admin.foitt.wallet.platform.utils.toPainter
 import com.github.michaelbull.result.get
-import com.github.michaelbull.result.onFailure
+import com.github.michaelbull.result.onErr
+import com.github.michaelbull.result.onOk
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
@@ -47,6 +55,7 @@ class DeferredDetailViewModel @AssistedInject constructor(
     private val getDrawableFromUri: GetDrawableFromUri,
     private val navManager: NavigationManager,
     private val deleteDeferred: DeleteDeferred,
+    private val credentialEventRepository: CredentialEventRepository,
     setTopBarState: SetTopBarState,
     @Assisted private val credentialId: Long
 ) : ScreenViewModel(setTopBarState) {
@@ -55,7 +64,23 @@ class DeferredDetailViewModel @AssistedInject constructor(
         fun create(credentialId: Long): DeferredDetailViewModel
     }
 
-    override val topBarState = TopBarState.None
+    override val topBarState: TopBarState
+        get() {
+            val state = deferredDetailUiState.stateFlow.value
+
+            return TopBarState.Custom(
+                title = state.credential.title?.let { UiString.Dynamic(it) },
+                onUp = ::onBack,
+                topBarBackground = TopBarBackground.CLUSTER,
+                actions = listOf(
+                    TopBarAction(
+                        onClick = ::onMenu,
+                        icon = R.drawable.wallet_ic_more_vert,
+                        contentDescription = R.string.tk_global_moreoptions_alt,
+                    )
+                ),
+            )
+        }
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
@@ -105,6 +130,14 @@ class DeferredDetailViewModel @AssistedInject constructor(
         else -> {}
     }
 
+    init {
+        viewModelScope.launch {
+            deferredDetailUiState.stateFlow.collectLatest {
+                setTopBarState(topBarState)
+            }
+        }
+    }
+
     fun onBack() {
         navManager.popBackStack()
     }
@@ -125,12 +158,15 @@ class DeferredDetailViewModel @AssistedInject constructor(
         isDeleting = true
         _visibleBottomSheet.value = VisibleBottomSheet.NONE
         viewModelScope.launch {
-            deleteDeferred(credentialId).onFailure { error ->
-                isDeleting = false
-                when (error) {
-                    is SsiError.Unexpected -> Timber.e(error.cause)
+            deleteDeferred(credentialId)
+                .onOk {
+                    credentialEventRepository.setEvent(CredentialEvent.DELETED)
+                }.onErr { error ->
+                    isDeleting = false
+                    when (error) {
+                        is SsiError.Unexpected -> Timber.e(error.cause)
+                    }
                 }
-            }
             navManager.popBackStackTo(Destination.HomeScreen::class, false)
         }
     }
@@ -140,7 +176,7 @@ class DeferredDetailViewModel @AssistedInject constructor(
     }
 
     private fun navigateToErrorScreen() {
-        navManager.replaceCurrentWith(Destination.GenericErrorScreen(GenericErrorScreenState.GENERIC))
+        navManager.replaceCurrentWith(Destination.GenericErrorScreen(GenericErrorScreenState.Offer.generic()))
     }
 
     private suspend fun IssuerDisplay?.toActorUiState() = this?.let {

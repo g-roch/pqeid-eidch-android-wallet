@@ -20,6 +20,7 @@ import ch.admin.foitt.wallet.platform.appAttestation.domain.usecase.implementati
 import ch.admin.foitt.wallet.platform.appAttestation.domain.util.getBase64CertificateChain
 import ch.admin.foitt.wallet.platform.appAttestation.mock.ClientAttestationMocks
 import ch.admin.foitt.wallet.platform.appAttestation.mock.KeyAttestationMocks
+import ch.admin.foitt.wallet.platform.environmentSetup.domain.repository.EnvironmentSetupRepository
 import ch.admin.foitt.wallet.platform.keyPairGenerator.domain.model.KeyPairError
 import ch.admin.foitt.wallet.platform.keyPairGenerator.domain.usecase.CreateJWSKeyPairInHardware
 import ch.admin.foitt.wallet.util.assertErrorType
@@ -46,6 +47,7 @@ import java.security.Signature
 import java.time.Instant
 
 class RequestClientAttestationImplTest {
+    private val attestationServiceUrl = "https://attestation.example.com"
     private val challengeResponse = AttestationChallengeResponse("challenge")
     private var keyPair: KeyPair = KeyPair(mockk(), mockk())
     private val keyStoreAlias = "keyAlias"
@@ -59,6 +61,9 @@ class RequestClientAttestationImplTest {
 
     @MockK
     private lateinit var mockAppAttestationRepository: AppAttestationRepository
+
+    @MockK
+    private lateinit var mockEnvironmentSetupRepository: EnvironmentSetupRepository
 
     @MockK
     private lateinit var mockClientAttestationRepository: CurrentClientAttestationRepository
@@ -83,21 +88,24 @@ class RequestClientAttestationImplTest {
 
         useCase = RequestClientAttestationImpl(
             appAttestationRepository = mockAppAttestationRepository,
+            environmentSetupRepository = mockEnvironmentSetupRepository,
             currentClientAttestationRepository = mockClientAttestationRepository,
             validateClientAttestation = mockValidateClientAttestation,
             createJWSKeyPairInHardware = mockCreateJWSKeyPairInHardware,
             createJwk = mockCreateJwk,
         )
 
+        coEvery { mockEnvironmentSetupRepository.defaultAttestationServiceUrl } returns attestationServiceUrl
+
         coEvery { mockClientAttestationRepository.delete(any()) } returns Ok(Unit)
 
         coEvery { mockClientAttestationRepository.get(any()) } returns Ok(null)
 
-        coEvery { mockAppAttestationRepository.fetchChallenge() } returns Ok(challengeResponse)
+        coEvery { mockAppAttestationRepository.fetchChallenge(attestationServiceUrl) } returns Ok(challengeResponse)
 
         coEvery { mockCreateJWSKeyPairInHardware(any(), any(), any(), any(), any()) } returns Ok(jwsKeyPair)
 
-        coEvery { mockCreateJwk(any(), any(), any()) } returns Ok(jwk)
+        coEvery { mockCreateJwk(any(), any()) } returns Ok(jwk)
 
         mockkStatic(JWSKeyPair::getBase64CertificateChain)
         coEvery { any<JWSKeyPair>().getBase64CertificateChain() } returns Ok(listOf("base64Certificate"))
@@ -133,16 +141,17 @@ class RequestClientAttestationImplTest {
 
         coVerifyOrder {
             mockClientAttestationRepository.get()
-            mockAppAttestationRepository.fetchChallenge()
+            mockAppAttestationRepository.fetchChallenge(attestationServiceUrl)
             mockCreateJWSKeyPairInHardware.invoke(any(), any(), any(), any(), any())
             mockClientAttestationRepository.delete(any())
-            mockCreateJwk.invoke(keyPair = keyPair, any(), any())
+            mockCreateJwk.invoke(keyPair = keyPair, any())
             mockAppAttestationRepository.fetchClientAttestation(publicKey = any())
             mockValidateClientAttestation.invoke(any(), any(), any())
             mockClientAttestationRepository.save(mockClientAttestation)
         }
     }
 
+    @Suppress("CheckResult")
     @Test
     fun `If a valid client attestation already exists, it is directly returned`() = runTest {
         coEvery { mockClientAttestationRepository.get() } returns Ok(mockClientAttestation)
@@ -157,10 +166,10 @@ class RequestClientAttestationImplTest {
         }
 
         coVerify(exactly = 0) {
-            mockAppAttestationRepository.fetchChallenge()
+            mockAppAttestationRepository.fetchChallenge(any())
             mockCreateJWSKeyPairInHardware.invoke(any(), any(), any(), any(), any())
             mockClientAttestationRepository.delete(any())
-            mockCreateJwk.invoke(keyPair = keyPair, any(), any())
+            mockCreateJwk.invoke(keyPair = keyPair, any())
             mockAppAttestationRepository.fetchClientAttestation(publicKey = any())
             mockValidateClientAttestation.invoke(any(), any(), any())
             mockClientAttestationRepository.save(mockClientAttestation)
@@ -197,12 +206,12 @@ class RequestClientAttestationImplTest {
 
     @Test
     fun `A network failure while getting the challenge is propagated`() = runTest {
-        coEvery { mockAppAttestationRepository.fetchChallenge() } returns Err(AttestationError.NetworkError)
+        coEvery { mockAppAttestationRepository.fetchChallenge(any()) } returns Err(AttestationError.NetworkError)
         val result = useCase()
         result.assertErrorType(AttestationError.NetworkError::class)
 
         coVerify(exactly = 1) {
-            mockAppAttestationRepository.fetchChallenge()
+            mockAppAttestationRepository.fetchChallenge(attestationServiceUrl)
         }
 
         coVerify(exactly = 0) {
@@ -235,7 +244,7 @@ class RequestClientAttestationImplTest {
     @Test
     fun `A Jwk string creation failure is propagated`() = runTest {
         val exception = Exception("myException")
-        coEvery { mockCreateJwk.invoke(any(), any(), any()) } returns Err(JwkError.Unexpected(exception))
+        coEvery { mockCreateJwk.invoke(any(), any()) } returns Err(JwkError.Unexpected(exception))
         val result = useCase()
         val error = result.assertErrorType(AttestationError.Unexpected::class)
         assertEquals(exception, error.throwable)

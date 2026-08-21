@@ -1,6 +1,6 @@
 package ch.admin.foitt.wallet.platform.appAttestation.data.repository
 
-import ch.admin.foitt.openid4vc.di.ExternalOpenId4VcModule.Companion.NAMED_DEFAULT_HTTP_CLIENT
+import ch.admin.foitt.openid4vc.di.OpenId4VcModule.Companion.NAMED_DEFAULT_HTTP_CLIENT
 import ch.admin.foitt.openid4vc.domain.model.jwk.Jwk
 import ch.admin.foitt.wallet.platform.appAttestation.domain.model.AppAttestationRepositoryError
 import ch.admin.foitt.wallet.platform.appAttestation.domain.model.AttestationChallengeResponse
@@ -29,9 +29,8 @@ class AppAttestationRepositoryImpl @Inject constructor(
     @param:Named(NAMED_DEFAULT_HTTP_CLIENT) private val httpClient: HttpClient,
     private val environmentSetupRepo: EnvironmentSetupRepository,
 ) : AppAttestationRepository {
-
-    override suspend fun fetchChallenge() = runSuspendCatching<AttestationChallengeResponse> {
-        httpClient.get(environmentSetupRepo.attestationsServiceUrl + "/api/attestations/challenge") {
+    override suspend fun fetchChallenge(url: String) = runSuspendCatching<AttestationChallengeResponse> {
+        httpClient.get("$url/api/attestations/challenge") {
             contentType(ContentType.Application.Json)
         }.body()
     }.mapError { throwable ->
@@ -44,7 +43,7 @@ class AppAttestationRepositoryImpl @Inject constructor(
         val body = ClientAttestationRequest(
             cnf = Confirmation(publicKey),
         )
-        httpClient.post(environmentSetupRepo.attestationsServiceUrl + "/api/attestations/android/client-attestations") {
+        httpClient.post(environmentSetupRepo.defaultAttestationServiceUrl + "/api/attestations/android/client-attestations") {
             contentType(ContentType.Application.Json)
             setBody(body)
         }.body()
@@ -52,12 +51,15 @@ class AppAttestationRepositoryImpl @Inject constructor(
         throwable.toAppAttestationRepositoryError("Fetch client attestation failed")
     }
 
-    override suspend fun fetchKeyAttestation(publicKey: Jwk) = runSuspendCatching<KeyAttestationResponse> {
+    override suspend fun fetchKeyAttestation(
+        url: String,
+        publicKey: Jwk,
+    ) = runSuspendCatching<KeyAttestationResponse> {
         val body = KeyAttestationRequest(
             cnf = Confirmation(publicKey),
         )
 
-        httpClient.post(environmentSetupRepo.attestationsServiceUrl + "/api/attestations/android/key-attestations") {
+        httpClient.post("$url/api/attestations/android/key-attestations") {
             contentType(ContentType.Application.Json)
             setBody(body)
         }.body()

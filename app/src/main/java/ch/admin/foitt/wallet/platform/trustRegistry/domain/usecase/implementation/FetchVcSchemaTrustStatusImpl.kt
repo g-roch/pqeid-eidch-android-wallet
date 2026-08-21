@@ -1,5 +1,6 @@
 package ch.admin.foitt.wallet.platform.trustRegistry.domain.usecase.implementation
 
+import ch.admin.foitt.didResolver.domain.DidResolverHelper
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSdJwt
 import ch.admin.foitt.wallet.platform.environmentSetup.domain.repository.EnvironmentSetupRepository
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.FetchVcSchemaTrustStatusError
@@ -11,6 +12,7 @@ import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.TrustStatementT
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.VcSchemaTrustStatus
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.VerificationV1TrustStatement
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.toFetchVcSchemaTrustStatusError
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.toUnexpected
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.repository.TrustStatementRepository
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.usecase.FetchVcSchemaTrustStatus
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.usecase.GetTrustDomainFromDid
@@ -29,6 +31,7 @@ class FetchVcSchemaTrustStatusImpl @Inject constructor(
     private val getTrustUrlFromDid: GetTrustUrlFromDid,
     private val trustStatementRepository: TrustStatementRepository,
     private val getTrustDomainFromDid: GetTrustDomainFromDid,
+    private val didResolverHelper: DidResolverHelper,
     private val environmentSetupRepo: EnvironmentSetupRepository,
     private val validateTrustStatement: ValidateTrustStatement,
     private val safeJson: SafeJson,
@@ -57,9 +60,7 @@ class FetchVcSchemaTrustStatusImpl @Inject constructor(
 
         val trustStatements = runSuspendCatching {
             trustStatementsRaw.map { VcSdJwt(it) }
-        }.mapError { throwable ->
-            throwable.toFetchVcSchemaTrustStatusError(message = "trust statement vc sd jwt creation failed")
-        }.bind()
+        }.mapError(Throwable::toUnexpected).bind()
 
         val filteredStatements = trustStatements
             .filter {
@@ -69,8 +70,9 @@ class FetchVcSchemaTrustStatusImpl @Inject constructor(
                 }
             }.filter { trustStatement ->
                 val trustDomain = getTrustDomainFromDid(actorDid).get() ?: return@filter false
-
-                environmentSetupRepo.trustRegistryTrustedDids[trustDomain]?.contains(trustStatement.vcIssuer) ?: false
+                val trustStatementDid = didResolverHelper.getDidStringFromAbsoluteKeyId(trustStatement.kid).get()
+                    ?: return@filter false
+                environmentSetupRepo.trustV1TrustRegistryTrustedDids[trustDomain]?.contains(trustStatementDid) ?: false
             }
 
         if (filteredStatements.isEmpty()) {

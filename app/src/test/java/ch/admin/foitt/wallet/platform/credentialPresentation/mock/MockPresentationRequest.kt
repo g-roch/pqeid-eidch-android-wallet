@@ -1,144 +1,143 @@
 package ch.admin.foitt.wallet.platform.credentialPresentation.mock
 
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialFormat
+import ch.admin.foitt.openid4vc.domain.model.jwk.Jwk
+import ch.admin.foitt.openid4vc.domain.model.jwk.Jwks
+import ch.admin.foitt.openid4vc.domain.model.jwt.Jwt
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.AuthorizationRequest
+import ch.admin.foitt.openid4vc.domain.model.presentationRequest.ClientIdentifier
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.ClientMetaData
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.ClientName
-import ch.admin.foitt.openid4vc.domain.model.presentationRequest.Constraints
-import ch.admin.foitt.openid4vc.domain.model.presentationRequest.Field
-import ch.admin.foitt.openid4vc.domain.model.presentationRequest.InputDescriptor
-import ch.admin.foitt.openid4vc.domain.model.presentationRequest.InputDescriptorFormat
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.LogoUri
-import ch.admin.foitt.openid4vc.domain.model.presentationRequest.PresentationDefinition
+import ch.admin.foitt.openid4vc.domain.model.presentationRequest.VerifierInfo
 import uniffi.heidi_dcql_rust.CredentialQuery
 import uniffi.heidi_dcql_rust.DcqlQuery
 
 object MockPresentationRequest {
 
-    const val CLIENT_ID = "decentralized_identifier:did:example:12345"
+    const val VERIFIER_ATTESTATION_CLIENT_ID = "test app"
+    const val CLIENT_ID = "did:example:12345"
+    const val CLIENT_ID_WITH_PREFIX = "decentralized_identifier:$CLIENT_ID"
     const val VALID_JWT =
-        "eyJraWQiOiJkaWQ6ZXhhbXBsZToxMjM0NSNrZXktMDEiLCJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ.eyJyZXNwb25zZV91cmkiOiJodHRwczovL2V4YW1wbGUuY29tIiwiY2xpZW50X2lkX3NjaGVtZSI6ImRpZCIsImlzcyI6ImRpZDpleGFtcGxlOjEyMzQ1IiwicmVzcG9uc2VfdHlwZSI6InZwX3Rva2VuIiwicHJlc2VudGF0aW9uX2RlZmluaXRpb24iOnsiaWQiOiIzZmE4NWY2NC0wMDAwLTAwMDAtYjNmYy0yYzk2M2Y2NmFmYTYiLCJuYW1lIjoic3RyaW5nIiwicHVycG9zZSI6InN0cmluZyIsImlucHV0X2Rlc2NyaXB0b3JzIjpbeyJpZCI6IjNmYTg1ZjY0LTU3MTctNDU2Mi1iM2ZjLTJjOTYzZjY2YWZhNiIsIm5hbWUiOiJBIG5hbWUiLCJmb3JtYXQiOnsidmMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2Il0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVTMjU2Il19fSwiY29uc3RyYWludHMiOnsiZmllbGRzIjpbeyJwYXRoIjpbIiQubGFzdE5hbWUiXX1dfX1dfSwibm9uY2UiOiJJMDJGaWJMRjRrNUVzZkRPMmpnakRvb1A0QS9adWtRMyIsImNsaWVudF9pZCI6ImRlY2VudHJhbGl6ZWRfaWRlbnRpZmllcjpkaWQ6ZXhhbXBsZToxMjM0NSIsImNsaWVudF9tZXRhZGF0YSI6eyJjbGllbnRfbmFtZSI6IlJlZiBUZXN0IiwibG9nb191cmkiOiJ3d3cuZXhhbXBsZS5pY28ifSwicmVzcG9uc2VfbW9kZSI6ImRpcmVjdF9wb3N0Iiwic3RhdGUiOiJzdGF0ZSJ9.kCM4UMdvzGZGkwjSp-8fxd6AI2UMKmTrkdwJmZ9TDv0gEXoFqk0nS6KT8N3P0S6_UAQJodCOUrGP5J_OzuqcYA"
+        "eyJraWQiOiJkaWQ6ZXhhbXBsZToxMjM0NSNrZXktMDEiLCJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ.eyJyZXNwb25zZV91cmkiOiJodHRwczovL2V4YW1wbGUuY29tIiwiYXVkIjoiZGlkOmV4YW1wbGU6MTIzNDUiLCJpc3MiOiJkaWQ6ZXhhbXBsZToxMjM0NSIsInJlc3BvbnNlX3R5cGUiOiJ2cF90b2tlbiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiM2ZhODVmNjQtMDAwMC0wMDAwLWIzZmMtMmM5NjNmNjZhZmE2IiwibmFtZSI6InN0cmluZyIsInB1cnBvc2UiOiJzdHJpbmciLCJpbnB1dF9kZXNjcmlwdG9ycyI6W3siaWQiOiIzZmE4NWY2NC01NzE3LTQ1NjItYjNmYy0yYzk2M2Y2NmFmYTYiLCJuYW1lIjoiQSBuYW1lIiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiJdfX0sImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLmxhc3ROYW1lIl19XX19XX0sIm5vbmNlIjoiSTAyRmliTEY0azVFc2ZETzJqZ2pEb29QNEEvWnVrUTMiLCJjbGllbnRfaWQiOiJkZWNlbnRyYWxpemVkX2lkZW50aWZpZXI6ZGlkOmV4YW1wbGU6MTIzNDUiLCJjbGllbnRfbWV0YWRhdGEiOnsiY2xpZW50X25hbWUiOiJSZWYgVGVzdCIsImxvZ29fdXJpIjoid3d3LmV4YW1wbGUuaWNvIn0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsInN0YXRlIjoic3RhdGUifQ.5-3bMiZSxToZHrP8rsQPmSQPsJ5j4aOLrl6WdvBHan5I2JimhoIoU-kHTg0zDMXATosDSOdTYUTY0xlxv1RGNA"
 
-    const val NOT_YET_VALID_JWT =
-        "eyJraWQiOiJkaWQ6ZXhhbXBsZToxMjM0NSNrZXktMDEiLCJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ.eyJuYmYiOjE5MjQ5ODgzOTksInJlc3BvbnNlX3VyaSI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJpc3MiOiJkaWQ6ZXhhbXBsZToxMjM0NSIsInJlc3BvbnNlX3R5cGUiOiJ2cF90b2tlbiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiM2ZhODVmNjQtMDAwMC0wMDAwLWIzZmMtMmM5NjNmNjZhZmE2IiwibmFtZSI6InN0cmluZyIsInB1cnBvc2UiOiJzdHJpbmciLCJpbnB1dF9kZXNjcmlwdG9ycyI6W3siaWQiOiIzZmE4NWY2NC01NzE3LTQ1NjItYjNmYy0yYzk2M2Y2NmFmYTYiLCJuYW1lIjoiQSBuYW1lIiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiJdfX0sImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLmxhc3ROYW1lIl19XX19XX0sIm5vbmNlIjoiSTAyRmliTEY0azVFc2ZETzJqZ2pEb29QNEEvWnVrUTMiLCJjbGllbnRfaWQiOiJkZWNlbnRyYWxpemVkX2lkZW50aWZpZXI6ZGlkOmV4YW1wbGU6MTIzNDUiLCJjbGllbnRfbWV0YWRhdGEiOnsiY2xpZW50X25hbWUiOiJSZWYgVGVzdCIsImxvZ29fdXJpIjoid3d3LmV4YW1wbGUuaWNvIn0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCJ9._8NNvx7den7EnVmlv-0kUCgRhKlRU_7BNppDdIb9GssxAxPsEZnKdvgAPAAIKC7LkIrLKfOH7cGz_t9fCKTZIQ"
+    const val VALID_VQPS =
+        "eyJ0eXAiOiJzd2l5dS12ZXJpZmljYXRpb24tcXVlcnktcHVibGljLXN0YXRlbWVudCtqd3QiLCJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDpleGFtcGxlOnZlcmlmaWNhdGlvbi1zdGF0bWVudC1pc3N1ZXIja2V5LTEiLCJwcm9maWxlX3ZlcnNpb24iOiJzd2lzcy1wcm9maWxlLXRydXN0OjEuMC4wIn0.eyJqdGkiOiIwN2YyODlkNS04YjFmLTQ2MDQtYmY3Mi01M2JkY2I3MWVlMDUiLCJzdWIiOiJkaWQ6ZXhhbXBsZTp2ZXJpZmllciIsImlhdCI6MTY5MDM2MDk2OCwiZXhwIjoxNzUzNDMyOTY4LCJwdXJwb3NlX25hbWUiOiJiZWlzcGllbCBhYmZyYWdlIiwicHVycG9zZV9uYW1lI2RlLWNoIjoiYmVpc3BpZWwgYWJmcmFnZSIsInB1cnBvc2VfZGVzY3JpcHRpb24iOiJmcmFnZSBhYiB6dW0gYmVpc3BpZWwiLCJwdXJwb3NlX2Rlc2NyaXB0aW9uI2RlLWNoIjoiZnJhZ2UgYWIgenVtIGJlaXNwaWVsIiwicmVxdWVzdCI6eyJ0eXBlIjoiRENRTCIsInNjb3BlIjoiY29tLmV4YW1wbGUuY3JlZGVudGlhbF9wcmVzZW50YXRpb24iLCJxdWVyeSI6eyJjcmVkZW50aWFscyI6W3siaWQiOiJwaWQiLCJmb3JtYXQiOiJ2YytzZC1qd3QiLCJtZXRhIjp7InZjdF92YWx1ZXMiOlsidmNTY2hlbWFJZCJdfSwiY2xhaW1zIjpbeyJwYXRoIjpbImZpcnN0TmFtZSJdfSx7InBhdGgiOlsibGFzdE5hbWUiXX0seyJwYXRoIjpbImRhdGVPZkJpcnRoIl19LHsicGF0aCI6WyJob21ldG93biJdfSx7InBhdGgiOlsiY2F0ZWdvcnlDb2RlIl19XSwicmVxdWlyZV9jcnlwdG9ncmFwaGljX2hvbGRlcl9iaW5kaW5nIjpmYWxzZX1dLCJjcmVkZW50aWFsX3NldHMiOlt7Im9wdGlvbnMiOltbInBpZCJdXX1dfX19.yT_Uxh8iAvGhC7z7SLGkHrwM0eTH8D0QgeFdJkG8-ZNtKFIsZ9FiOZUBMENBgxpghIJA9X89JtXDXQgPCUDLbw"
 
-    const val EXPIRED_JWT =
-        "eyJraWQiOiJkaWQ6ZXhhbXBsZToxMjM0NSNrZXktMDEiLCJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ.eyJleHAiOjAsInJlc3BvbnNlX3VyaSI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJpc3MiOiJkaWQ6ZXhhbXBsZToxMjM0NSIsInJlc3BvbnNlX3R5cGUiOiJ2cF90b2tlbiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiM2ZhODVmNjQtMDAwMC0wMDAwLWIzZmMtMmM5NjNmNjZhZmE2IiwibmFtZSI6InN0cmluZyIsInB1cnBvc2UiOiJzdHJpbmciLCJpbnB1dF9kZXNjcmlwdG9ycyI6W3siaWQiOiIzZmE4NWY2NC01NzE3LTQ1NjItYjNmYy0yYzk2M2Y2NmFmYTYiLCJuYW1lIjoiQSBuYW1lIiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiJdfX0sImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLmxhc3ROYW1lIl19XX19XX0sIm5vbmNlIjoiSTAyRmliTEY0azVFc2ZETzJqZ2pEb29QNEEvWnVrUTMiLCJjbGllbnRfaWQiOiJkZWNlbnRyYWxpemVkX2lkZW50aWZpZXI6ZGlkOmV4YW1wbGU6MTIzNDUiLCJjbGllbnRfbWV0YWRhdGEiOnsiY2xpZW50X25hbWUiOiJSZWYgVGVzdCIsImxvZ29fdXJpIjoid3d3LmV4YW1wbGUuaWNvIn0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCJ9.KDtjCoWGe8amxrxALEwQ5VgNPgEOs-ML-xAShfQRhPDPgam8lWmPTrwMkKHz-BcFm0Q3yQ_bcaIstreMM7QESg"
+    const val VALID_IDTS =
+        "eyJ0eXAiOiJzd2l5dS1pZGVudGl0eS10cnVzdC1zdGF0ZW1lbnQrand0IiwiYWxnIjoiRVMyNTYiLCJraWQiOiJkaWQ6ZXhhbXBsZTp0cnVzdC1pc3N1ZXIja2V5LTEiLCJwcm9maWxlX3ZlcnNpb24iOiJzd2lzcy1wcm9maWxlLXRydXN0OjEuMC4wIn0.eyJzdWIiOiJkaWQ6ZXhhbXBsZTphY3RvciIsImp0aSI6IjA3ZjI4OWQ1LThiMWYtNDYwNC1iZjcyLTUzYmRjYjcxZWUwNSIsImlhdCI6MTY5MDM2MDk2OCwiZXhwIjoxNzUzNDMyOTY4LCJzdGF0dXMiOnsic3RhdHVzX2xpc3QiOnsiaWR4IjowLCJ1cmkiOiJodHRwczovL2V4YW1wbGUuY29tL3N0YXR1c2xpc3RzLzEifX0sImVudGl0eV9uYW1lIjoiZW50aXR5TmFtZSIsImVudGl0eV9uYW1lI2RlLUNIIjoiZW50aXR5TmFtZSBkZS1DSCIsImVudGl0eV9uYW1lI2VuLVVTIjoiZW50aXR5TmFtZSBlbi1VUyIsImlzX3N0YXRlX2FjdG9yIjpmYWxzZSwicmVnaXN0cnlfaWRzIjpbeyJ0eXBlIjoidHlwZSIsInZhbHVlIjoidmFsdWUifV19.RtmKqjvL6ZZwT5HiAnkzPQftcQR-IVS0pId0VVSYFMJRxb7jEGP3Fn55e8YSMBg0IwAiKWFNHE-aQMSSNfZJTg"
 
-    const val JWT_MISSING_RESPONSE_URI =
-        "eyJraWQiOiJkaWQ6ZXhhbXBsZToxMjM0NSNrZXktMDEiLCJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ.eyJpc3MiOiJkaWQ6ZXhhbXBsZToxMjM0NSIsInJlc3BvbnNlX3R5cGUiOiJ2cF90b2tlbiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiM2ZhODVmNjQtMDAwMC0wMDAwLWIzZmMtMmM5NjNmNjZhZmE2IiwibmFtZSI6InN0cmluZyIsInB1cnBvc2UiOiJzdHJpbmciLCJpbnB1dF9kZXNjcmlwdG9ycyI6W3siaWQiOiIzZmE4NWY2NC01NzE3LTQ1NjItYjNmYy0yYzk2M2Y2NmFmYTYiLCJuYW1lIjoiQSBuYW1lIiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiJdfX0sImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLmxhc3ROYW1lIl19XX19XX0sIm5vbmNlIjoiSTAyRmliTEY0azVFc2ZETzJqZ2pEb29QNEEvWnVrUTMiLCJjbGllbnRfaWQiOiJkZWNlbnRyYWxpemVkX2lkZW50aWZpZXI6ZGlkOmV4YW1wbGU6MTIzNDUiLCJjbGllbnRfbWV0YWRhdGEiOnsiY2xpZW50X25hbWUiOiJSZWYgVGVzdCIsImxvZ29fdXJpIjoid3d3LmV4YW1wbGUuaWNvIn0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsInN0YXRlIjoic3RhdGUifQ.E8J430Hu6aMzS_R58Kltk1330APz1e6NxbhI3q8USM1qswh0_iOEKrBkSIFsgXAoJFvpxqY3ihMAOLpLZRitpg"
-
-    const val JWT_CONTAINING_INVALID_AUTHORIZATION_REQUEST =
-        "eyJraWQiOiJkaWQ6ZXhhbXBsZToxMjM0NSNrZXktMDEiLCJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ.eyJpc3MiOiJkaWQ6ZXhhbXBsZToxMjM0NSIsInJlc3BvbnNlX3R5cGUiOiJ2cF90b2tlbiIsInByZXNlbnRhdGlvbl9kZWZpbml0aW9uIjp7ImlkIjoiM2ZhODVmNjQtMDAwMC0wMDAwLWIzZmMtMmM5NjNmNjZhZmE2IiwibmFtZSI6InN0cmluZyIsInB1cnBvc2UiOiJzdHJpbmciLCJpbnB1dF9kZXNjcmlwdG9ycyI6W3siaWQiOiIzZmE4NWY2NC01NzE3LTQ1NjItYjNmYy0yYzk2M2Y2NmFmYTYiLCJuYW1lIjoiQSBuYW1lIiwiZm9ybWF0Ijp7InZjK3NkLWp3dCI6eyJzZC1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiJdLCJrYi1qd3RfYWxnX3ZhbHVlcyI6WyJFUzI1NiJdfX0sImNvbnN0cmFpbnRzIjp7ImZpZWxkcyI6W3sicGF0aCI6WyIkLmxhc3ROYW1lIl19XX19XX0sIm5vbmNlIjoiSTAyRmliTEY0azVFc2ZETzJqZ2pEb29QNEEvWnVrUTMiLCJjbGllbnRfaWQiOiJkZWNlbnRyYWxpemVkX2lkZW50aWZpZXI6ZGlkOmV4YW1wbGU6MTIzNDUiLCJjbGllbnRfbWV0YWRhdGEiOnsiY2xpZW50X25hbWUiOiJSZWYgVGVzdCIsImxvZ29fdXJpIjoid3d3LmV4YW1wbGUuaWNvIn0sInJlc3BvbnNlX21vZGUiOiJkaXJlY3RfcG9zdCIsInN0YXRlIjoic3RhdGUiLCJvdGhlckNsYWltIjoib3RoZXJWYWx1ZSJ9.QN5ZT7DD4ABstg4uVyhvx-WzkB61gr2iM30TcbgRa7pyGfcI_-FJjxHh6pBODZScrx99oKbbJ3QtuD7W2Ln7Dg"
-
-    const val JWT_MISSING_CLIENT_ID =
-        "eyJraWQiOiJkaWQ6ZXhhbXBsZToxMjM0NSNrZXktMDEiLCJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ.eyJyZXNwb25zZV91cmkiOiJodHRwczovL2V4YW1wbGUuY29tIiwiaXNzIjoiZGlkOmV4YW1wbGU6MTIzNDUiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJwcmVzZW50YXRpb25fZGVmaW5pdGlvbiI6eyJpZCI6IjNmYTg1ZjY0LTAwMDAtMDAwMC1iM2ZjLTJjOTYzZjY2YWZhNiIsIm5hbWUiOiJzdHJpbmciLCJwdXJwb3NlIjoic3RyaW5nIiwiaW5wdXRfZGVzY3JpcHRvcnMiOlt7ImlkIjoiM2ZhODVmNjQtNTcxNy00NTYyLWIzZmMtMmM5NjNmNjZhZmE2IiwibmFtZSI6IkEgbmFtZSIsImZvcm1hdCI6eyJ2YytzZC1qd3QiOnsic2Qtand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiXSwia2Itand0X2FsZ192YWx1ZXMiOlsiRVMyNTYiXX19LCJjb25zdHJhaW50cyI6eyJmaWVsZHMiOlt7InBhdGgiOlsiJC5sYXN0TmFtZSJdfV19fV19LCJub25jZSI6IkkwMkZpYkxGNGs1RXNmRE8yamdqRG9vUDRBL1p1a1EzIiwiY2xpZW50X21ldGFkYXRhIjp7ImNsaWVudF9uYW1lIjoiUmVmIFRlc3QiLCJsb2dvX3VyaSI6Ind3dy5leGFtcGxlLmljbyJ9LCJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJzdGF0ZSI6InN0YXRlIn0.IvK_f4W7YRUgijye_PcCzjdCt5QCtKfnzaVyn8nRNbF4hnuLw8po4ymVv7Yy7Etb3sQoAaYpSQ81DrH7Ztey1Q"
-
-    private val constraints = Constraints(
-        fields = listOf(
-            Field(
-                path = listOf()
-            )
-        )
+    val jwk = Jwk(
+        x = "x",
+        y = "y",
+        crv = "curve",
+        kty = "kty"
     )
-
-    private val inputDescriptorFormatVcSdJwt = InputDescriptorFormat.VcSdJwt(
-        sdJwtAlgorithms = listOf(),
-        kbJwtAlgorithms = listOf(),
-    )
-
-    val inputDescriptor = InputDescriptor(
-        id = "id",
-        name = "name",
-        formats = listOf(
-            inputDescriptorFormatVcSdJwt
-        ),
-        constraints = constraints,
-        purpose = "constraintPurpose",
-    )
-
-    private val presentationDefinition = PresentationDefinition(
-        id = "diam",
-        inputDescriptors = listOf(inputDescriptor),
-        purpose = "definitionPurpose",
-        name = "name",
-    )
-
     val authorizationRequest = AuthorizationRequest(
-        nonce = "iusto",
-        presentationDefinition = presentationDefinition,
-        responseUri = "tincidunt",
-        responseMode = "direct_post",
-        clientId = CLIENT_ID,
+        nonce = "nonce",
+        responseUri = "response_uri",
+        responseMode = "direct_post.jwt",
+        clientIdentifier = ClientIdentifier(
+            clientIdPrefix = ClientIdentifier.ClientIdPrefix.DecentralizedIdentifier,
+            clientId = CLIENT_ID,
+            raw = CLIENT_ID_WITH_PREFIX,
+        ),
         responseType = "vp_token",
-        clientMetaData = null,
+        clientMetaData = ClientMetaData(
+            clientNameList = emptyList(),
+            logoUriList = emptyList(),
+            jwks = Jwks(listOf(jwk)),
+        ),
         dcqlQuery = null,
-        state = "state",
+        state = null,
+        expectedOrigins = emptyList(),
+        verifierInfo = listOf(
+            VerifierInfo("jwt", Jwt(VALID_IDTS)),
+            VerifierInfo("jwt", Jwt(VALID_VQPS))
+        ),
+        scope = "scope"
     )
 
-    fun invalidPresentationRequestFields() = authorizationRequest.copy(
-        presentationDefinition = presentationDefinition.copy(
-            inputDescriptors = listOf(
-                inputDescriptor.copy(
-                    constraints = Constraints(
-                        fields = emptyList()
-                    )
-                )
-            )
-        )
+    val authorizationRequestWithoutIdTS = authorizationRequest.copy(
+        verifierInfo = listOf(VerifierInfo("jwt", Jwt(VALID_VQPS))),
     )
 
-    fun invalidPresentationRequestClaims() = authorizationRequest.copy(
+    val authorizationRequestWithoutVqPS = authorizationRequest.copy(
+        verifierInfo = listOf(VerifierInfo("jwt", Jwt(VALID_IDTS))),
         dcqlQuery = DcqlQuery(
             credentials = listOf(
                 CredentialQuery(
                     id = "id",
-                    format = CredentialFormat.VC_SD_JWT.format,
+                    format = CredentialFormat.DC_SD_JWT.format,
+                    requireCryptographicHolderBinding = true,
+                )
+            )
+        ),
+        scope = null,
+    )
+    val authorizationRequestDcApi = authorizationRequestWithoutVqPS.copy(
+        verifierInfo = listOf(),
+        clientIdentifier = ClientIdentifier(
+            clientIdPrefix = ClientIdentifier.ClientIdPrefix.VerifierAttestationJwt,
+            clientId = VERIFIER_ATTESTATION_CLIENT_ID,
+            raw = "verifier_attestation:$VERIFIER_ATTESTATION_CLIENT_ID"
+        ),
+        responseMode = "dc_api.jwt"
+    )
+
+    val authorizationRequestWithState = authorizationRequestWithoutVqPS.copy(
+        state = "state",
+    )
+
+    val authorizationRequestWithStateAndNoHolderBinding = authorizationRequestWithoutVqPS.copy(
+        dcqlQuery = DcqlQuery(
+            credentials = listOf(
+                CredentialQuery(
+                    id = "id",
+                    format = CredentialFormat.DC_SD_JWT.format,
+                    requireCryptographicHolderBinding = false,
+                )
+            )
+        ),
+        state = "state",
+    )
+
+    fun invalidPresentationRequestClaims() = authorizationRequestWithoutVqPS.copy(
+        dcqlQuery = DcqlQuery(
+            credentials = listOf(
+                CredentialQuery(
+                    id = "id",
+                    format = CredentialFormat.DC_SD_JWT.format,
                     claims = emptyList(),
                 )
             )
         )
     )
 
-    fun invalidPresentationRequestPresentationRequestDCQL() = authorizationRequest.copy(
-        presentationDefinition = null,
+    fun invalidPresentationRequestNoDCQL() = authorizationRequest.copy(
         dcqlQuery = null,
+        verifierInfo = null,
+        scope = null,
     )
 
-    fun invalidPresentationRequestPath(paths: List<String>) = authorizationRequest.copy(
-        presentationDefinition = presentationDefinition.copy(
-            inputDescriptors = listOf(
-                inputDescriptor.copy(
-                    constraints = Constraints(
-                        fields = listOf(
-                            Field(path = paths)
-                        ),
-                    )
-                )
-            )
-        )
-    )
-
-    fun invalidPresentationRequestState() = authorizationRequest.copy(
+    fun invalidPresentationRequestState() = authorizationRequestWithoutVqPS.copy(
         dcqlQuery = DcqlQuery(
             credentials = listOf(
                 CredentialQuery(
                     id = "id",
-                    format = CredentialFormat.VC_SD_JWT.format,
+                    format = CredentialFormat.DC_SD_JWT.format,
                     requireCryptographicHolderBinding = false,
-                )
+                ),
+                CredentialQuery(
+                    id = "id2",
+                    format = CredentialFormat.DC_SD_JWT.format,
+                    requireCryptographicHolderBinding = true,
+                ),
             )
         ),
-        state = null,
     )
 
-    val authorizationRequestWithDisplays = AuthorizationRequest(
-        nonce = "iusto",
-        presentationDefinition = presentationDefinition,
-        responseUri = "tincidunt",
-        responseMode = "suscipit",
-        clientId = "clientId",
-        responseType = "responseType",
+    val authorizationRequestWithDisplays = authorizationRequest.copy(
         clientMetaData = ClientMetaData(
             clientNameList = listOf(
                 ClientName(
@@ -167,9 +166,8 @@ object MockPresentationRequest {
                     logoUri = "logoUri",
                     locale = "fallback"
                 )
-            )
+            ),
+            jwks = Jwks(emptyList()),
         ),
-        dcqlQuery = null,
-        state = "state"
     )
 }

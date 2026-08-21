@@ -4,6 +4,7 @@ import ch.admin.foitt.openid4vc.domain.model.anycredential.AnyCredential
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.AuthorizationRequest
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.CreateAnyVerifiablePresentationError
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.CreateVcSdJwtVerifiablePresentationError
+import ch.admin.foitt.openid4vc.domain.model.presentationRequest.PresentationFlowContext
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.PresentationRequestError
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.toCreateAnyVerifiablePresentationError
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSdJwtCredential
@@ -20,15 +21,15 @@ internal class CreateAnyVerifiablePresentationImpl @Inject constructor(
 ) : CreateAnyVerifiablePresentation {
     override suspend fun invoke(
         anyCredential: AnyCredential,
-        requestedFields: List<String>,
         authorizationRequest: AuthorizationRequest,
+        presentationContext: PresentationFlowContext,
     ): Result<String, CreateAnyVerifiablePresentationError> =
         when (anyCredential) {
             is VcSdJwtCredential -> createVcSdJwtVerifiablePresentation(
                 credential = anyCredential,
                 keyBinding = anyCredential.keyBinding,
-                requestedFields = requestedFields,
                 authorizationRequest = authorizationRequest,
+                presentationContext = presentationContext,
             ).mapError(CreateVcSdJwtVerifiablePresentationError::toCreateAnyVerifiablePresentationError)
 
             else -> {

@@ -6,7 +6,6 @@ import ch.admin.foitt.wallet.feature.home.domain.usecase.GetEIdRequestsFlow
 import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.model.EIdRequestCaseWithState
 import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.model.EIdRequestCaseWithStateRepositoryError
 import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.model.SIdRequestDisplayData
-import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.model.SIdRequestDisplayStatus
 import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.model.toSIdRequestDisplayStatus
 import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.repository.EIdRequestCaseWithStateRepository
 import ch.admin.foitt.wallet.platform.locale.domain.usecase.GetCurrentAppLocale
@@ -17,9 +16,8 @@ import ch.admin.foitt.wallet.platform.utils.mapOk
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.coroutines.runSuspendCatching
 import com.github.michaelbull.result.get
-import com.github.michaelbull.result.onFailure
+import com.github.michaelbull.result.onErr
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import timber.log.Timber
 import java.util.Locale
 import javax.inject.Inject
@@ -42,22 +40,25 @@ class GetEIdRequestsFlowImpl @Inject constructor(
 
     private fun EIdRequestCaseWithState.toSIdRequestDisplayData(currentLocale: Locale) = SIdRequestDisplayData(
         caseId = case.id,
-        status = state?.toSIdRequestDisplayStatus() ?: SIdRequestDisplayStatus.UNKNOWN,
+        status = toSIdRequestDisplayStatus(),
         firstName = case.firstName,
         lastName = case.lastName,
         onlineSessionStartOpenAt = state?.let {
             runSuspendCatching {
-                it.onlineSessionStartOpenAt?.epochSecondsToZonedDateTime()?.asDayFullMonthYear(currentLocale)
-            }.onFailure { throwable ->
+                it.onlineSessionStartOpenAt?.epochSecondsToZonedDateTime()
+                    ?.asDayFullMonthYear(currentLocale)
+            }.onErr { throwable ->
                 Timber.w(throwable, "Could not parse onlineSessionStartOpenAt date")
             }.get()
         },
         onlineSessionStartTimeoutAt = state?.let {
             runSuspendCatching {
-                it.onlineSessionStartTimeoutAt?.epochSecondsToZonedDateTime()?.asDayFullMonthYear(currentLocale)
-            }.onFailure { throwable ->
+                it.onlineSessionStartTimeoutAt?.epochSecondsToZonedDateTime()
+                    ?.asDayFullMonthYear(currentLocale)
+            }.onErr { throwable ->
                 Timber.w(throwable, "Could not parse onlineSessionStartTimeoutAt date")
             }.get()
         },
+        createdAt = case.createdAt,
     )
 }

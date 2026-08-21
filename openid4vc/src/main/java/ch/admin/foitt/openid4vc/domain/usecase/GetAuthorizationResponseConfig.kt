@@ -1,15 +1,16 @@
 package ch.admin.foitt.openid4vc.domain.usecase
 
+import ch.admin.foitt.openid4vc.domain.model.anycredential.AnyCredential
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.AuthorizationRequest
-import ch.admin.foitt.openid4vc.domain.model.presentationRequest.AuthorizationResponse
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.AuthorizationResponseConfig
 import ch.admin.foitt.openid4vc.domain.model.presentationRequest.GetAuthorizationResponseConfigError
+import ch.admin.foitt.openid4vc.domain.model.presentationRequest.PresentationFlowContext
 import com.github.michaelbull.result.Result
 
 interface GetAuthorizationResponseConfig {
-    operator fun invoke(
+    suspend operator fun invoke(
+        anyCredential: AnyCredential,
         authorizationRequest: AuthorizationRequest,
-        authorizationResponse: AuthorizationResponse,
-        usePayloadEncryption: Boolean,
+        presentationContext: PresentationFlowContext
     ): Result<AuthorizationResponseConfig, GetAuthorizationResponseConfigError>
 }

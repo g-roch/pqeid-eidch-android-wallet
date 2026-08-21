@@ -30,10 +30,14 @@ import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import ch.admin.foitt.wallet.R
 import ch.admin.foitt.wallet.platform.credentialStatus.domain.model.CredentialDisplayStatus
 import ch.admin.foitt.wallet.platform.preview.WalletComponentPreview
+import ch.admin.foitt.wallet.platform.utils.asDayMonthYear
+import ch.admin.foitt.wallet.platform.utils.asHourMinutes
+import ch.admin.foitt.wallet.platform.utils.toZonedDateTime
 import ch.admin.foitt.wallet.theme.Sizes
 import ch.admin.foitt.wallet.theme.WalletTheme
 import java.time.Instant
-import java.time.temporal.ChronoUnit
+import java.time.LocalDate
+import java.time.ZoneId
 
 @Composable
 internal fun CredentialStatusBadge(
@@ -63,6 +67,7 @@ internal fun CredentialStatusBadge(
                         CredentialDisplayStatus.Unknown -> Color.Transparent
                         is CredentialDisplayStatus.NotYetValid,
                         is CredentialDisplayStatus.Expired,
+                        is CredentialDisplayStatus.BusinessExpired,
                         CredentialDisplayStatus.Revoked,
                         CredentialDisplayStatus.Suspended -> WalletTheme.colorScheme.lightErrorFixed
                     },
@@ -72,6 +77,7 @@ internal fun CredentialStatusBadge(
                     Sizes.line01,
                     color = when (credentialStatus) {
                         is CredentialDisplayStatus.Expired,
+                        is CredentialDisplayStatus.BusinessExpired,
                         CredentialDisplayStatus.Revoked,
                         is CredentialDisplayStatus.NotYetValid,
                         CredentialDisplayStatus.Suspended -> Color.Transparent
@@ -100,6 +106,7 @@ private fun CredentialStatusLabel(
         CredentialDisplayStatus.Unknown -> textColor
         is CredentialDisplayStatus.NotYetValid,
         is CredentialDisplayStatus.Expired,
+        is CredentialDisplayStatus.BusinessExpired,
         CredentialDisplayStatus.Revoked,
         CredentialDisplayStatus.Suspended -> WalletTheme.colorScheme.onLightErrorFixed
     }
@@ -125,6 +132,7 @@ internal fun CredentialDisplayStatus.getIcon(): Int = when (this) {
     CredentialDisplayStatus.Valid -> R.drawable.wallet_ic_checkmark
     is CredentialDisplayStatus.NotYetValid -> R.drawable.wallet_ic_hourglass
     is CredentialDisplayStatus.Expired,
+    is CredentialDisplayStatus.BusinessExpired,
     CredentialDisplayStatus.Revoked -> R.drawable.wallet_ic_invalid
     CredentialDisplayStatus.Suspended -> R.drawable.wallet_ic_front_hand
     CredentialDisplayStatus.Unsupported,
@@ -137,21 +145,21 @@ internal fun CredentialDisplayStatus.getText(): String = when (this) {
     CredentialDisplayStatus.Unsupported,
     CredentialDisplayStatus.Unknown -> stringResource(R.string.tk_credential_status_unknown)
     is CredentialDisplayStatus.NotYetValid -> getNotYetValidText(validFrom, isAltText = false)
-    is CredentialDisplayStatus.Expired -> stringResource(R.string.tk_credential_status_invalid)
+    is CredentialDisplayStatus.Expired,
+    is CredentialDisplayStatus.BusinessExpired -> stringResource(R.string.tk_credential_status_invalid)
     CredentialDisplayStatus.Revoked -> stringResource(R.string.tk_credential_status_revoked)
     CredentialDisplayStatus.Suspended -> stringResource(R.string.tk_credential_status_suspended)
 }
 
 @Composable
 private fun getNotYetValidText(validFrom: Instant, isAltText: Boolean): String {
-    val numberOfDays = ChronoUnit.DAYS.between(Instant.now(), validFrom)
-    val isValidInLessThan24h = numberOfDays < 1
+    val isSameDay = validFrom.toZonedDateTime().toLocalDate() == LocalDate.now(ZoneId.systemDefault())
 
     return when {
-        isValidInLessThan24h && isAltText -> stringResource(R.string.tk_credential_status_soon_alt)
-        isValidInLessThan24h -> stringResource(R.string.tk_credential_status_soon)
-        isAltText -> stringResource(R.string.tk_credential_status_notValidYet_alt, numberOfDays)
-        else -> stringResource(R.string.tk_credential_status_notValidYet, numberOfDays)
+        isSameDay && isAltText -> stringResource(R.string.tk_credential_status_soon_alt, validFrom.asHourMinutes())
+        isSameDay -> stringResource(R.string.tk_credential_status_soon, validFrom.asHourMinutes())
+        isAltText -> stringResource(R.string.tk_credential_status_notYetValid_alt, validFrom.asDayMonthYear())
+        else -> stringResource(R.string.tk_credential_status_notYetValid, validFrom.asDayMonthYear())
     }
 }
 
@@ -161,7 +169,8 @@ internal fun CredentialDisplayStatus.getAltText(): String = when (this) {
     CredentialDisplayStatus.Unsupported,
     CredentialDisplayStatus.Unknown -> stringResource(R.string.tk_credential_status_unknown_alt)
     is CredentialDisplayStatus.NotYetValid -> getNotYetValidText(validFrom, isAltText = true)
-    is CredentialDisplayStatus.Expired -> stringResource(R.string.tk_credential_status_invalid_alt)
+    is CredentialDisplayStatus.Expired,
+    is CredentialDisplayStatus.BusinessExpired -> stringResource(R.string.tk_credential_status_invalid_alt)
     CredentialDisplayStatus.Revoked -> stringResource(R.string.tk_credential_status_revoked_alt)
     CredentialDisplayStatus.Suspended -> stringResource(R.string.tk_credential_status_suspended_alt)
 }
@@ -174,6 +183,7 @@ private class CredentialStatusProvider : PreviewParameterProvider<CredentialDisp
         CredentialDisplayStatus.Unsupported,
         CredentialDisplayStatus.Unknown,
         CredentialDisplayStatus.Expired(expiredAt = Instant.MIN),
+        CredentialDisplayStatus.BusinessExpired(expiredAt = Instant.MIN),
         CredentialDisplayStatus.NotYetValid(validFrom = Instant.now().plusSeconds(3000000)),
         CredentialDisplayStatus.NotYetValid(validFrom = Instant.now().plusSeconds(3600)),
     )

@@ -8,11 +8,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewModelScope
 import ch.admin.foitt.avwrapper.AVBeam
 import ch.admin.foitt.avwrapper.AVBeamError
-import ch.admin.foitt.avwrapper.AVBeamInitConfig
 import ch.admin.foitt.avwrapper.AVBeamPackageResult
 import ch.admin.foitt.avwrapper.AVBeamStatus
 import ch.admin.foitt.avwrapper.AvBeamNotification
-import ch.admin.foitt.avwrapper.config.AVBeamConfigLogLevel
 import ch.admin.foitt.avwrapper.config.AVBeamScanNfcConfig
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.domain.model.EIdRequestVerificationError
 import ch.admin.foitt.wallet.feature.eIdRequestVerification.domain.usecase.GetDocumentScanData
@@ -21,16 +19,19 @@ import ch.admin.foitt.wallet.feature.eIdRequestVerification.presentation.nfcScan
 import ch.admin.foitt.wallet.platform.database.domain.model.EIdRequestFileCategory
 import ch.admin.foitt.wallet.platform.eIdApplicationProcess.domain.usecase.GetStartAutoVerificationResult
 import ch.admin.foitt.wallet.platform.environmentSetup.domain.repository.EnvironmentSetupRepository
+import ch.admin.foitt.wallet.platform.navigation.DestinationScopedComponentManager
 import ch.admin.foitt.wallet.platform.navigation.NavigationManager
+import ch.admin.foitt.wallet.platform.navigation.domain.model.ComponentScope
 import ch.admin.foitt.wallet.platform.navigation.domain.model.Destination
 import ch.admin.foitt.wallet.platform.scaffold.domain.model.TopBarState
 import ch.admin.foitt.wallet.platform.scaffold.domain.usecase.SetTopBarState
 import ch.admin.foitt.wallet.platform.scaffold.presentation.ScreenViewModel
+import ch.admin.foitt.wallet.platform.scanning.di.AvBeamSdkEntryPoint
 import ch.admin.foitt.wallet.platform.utils.openNFCSettings
 import com.github.michaelbull.result.coroutines.runSuspendCatching
 import com.github.michaelbull.result.get
-import com.github.michaelbull.result.onFailure
-import com.github.michaelbull.result.onSuccess
+import com.github.michaelbull.result.onErr
+import com.github.michaelbull.result.onOk
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -55,12 +56,12 @@ import java.lang.ref.WeakReference
 
 @HiltViewModel(assistedFactory = EIdNfcScannerViewModel.Factory::class)
 class EIdNfcScannerViewModel @AssistedInject constructor(
-    private val avBeam: AVBeam,
     private val environmentSetupRepository: EnvironmentSetupRepository,
     private val getStartAutoVerificationResult: GetStartAutoVerificationResult,
     private val saveEIdRequestFiles: SaveEIdRequestFiles,
     private val getDocumentScanData: GetDocumentScanData,
     private val navManager: NavigationManager,
+    destinationScopedComponentManager: DestinationScopedComponentManager,
     @param:ApplicationContext private val appContext: Context,
     @Assisted private val caseId: String,
     setTopBarState: SetTopBarState,
@@ -70,6 +71,13 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
     interface Factory {
         fun create(caseId: String): EIdNfcScannerViewModel
     }
+
+    private val avBeamRepository = destinationScopedComponentManager.getEntryPoint(
+        entryPointClass = AvBeamSdkEntryPoint::class.java,
+        componentScope = ComponentScope.AvBeamSdkSession,
+    ).avBeamRepository()
+
+    private val avBeam: AVBeam get() = avBeamRepository.getBeam()
 
     override val topBarState: TopBarState = TopBarState.WithCloseButton(
         onClose = { navManager.navigateBackToHomeScreen(Destination.EIdNfcScannerScreen::class) },
@@ -125,12 +133,7 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
     }
 
     private suspend fun initScannerSdk(activity: AppCompatActivity) = withContext(Dispatchers.IO) {
-        val logLevel = if (environmentSetupRepository.avBeamLoggingEnabled) {
-            AVBeamConfigLogLevel.DEBUG
-        } else {
-            AVBeamConfigLogLevel.NONE
-        }
-        avBeam.init(AVBeamInitConfig(logLevel), activity)
+        avBeamRepository.init(activity)
         avBeam.initializedFlow.awaitValue(true)
         Timber.d("$logTag initialization done")
     }
@@ -181,11 +184,14 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
             sIdCaseId = caseId,
             filesDataList = packageResult.files,
             filesCategory = EIdRequestFileCategory.NFC_SCAN,
-        ).onFailure { error ->
+        ).onErr { error ->
             when (error) {
-                is EIdRequestVerificationError.Unexpected -> countAndReturnUnexpectedError("saving files", error.cause)
+                is EIdRequestVerificationError.Unexpected -> countAndReturnUnexpectedError(
+                    "saving files",
+                    error.cause
+                )
             }
-        }.onSuccess {
+        }.onOk {
             Timber.d("$logTag success saving files")
             nfcScannerState.update { NfcScannerState.ScanSuccess(packageResult) }
             triggerShowSummaryDelay()
@@ -226,9 +232,9 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
                 documentScanPackageResult = packageResult,
                 config = config,
             )
-        }.onFailure {
+        }.onErr {
             countAndReturnScanFailure("starting scan", it)
-        }.onSuccess {
+        }.onOk {
             nfcScannerState.update { NfcScannerState.Scanning }
         }
     }
@@ -265,9 +271,9 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
             avBeam.stopScanNfc()
             nfcScanIsFinished.update { false }
             nfcScanIsSuccessful.update { false }
-        }.onFailure {
+        }.onErr {
             countAndReturnUnexpectedError("resetting NFC", it)
-        }.onSuccess {
+        }.onOk {
             nfcScannerState.update { NfcScannerState.Ready }
         }
     }
@@ -281,7 +287,7 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
                     return@launch
                 }
                 avBeam.onNewIntentNfc(intent)
-            }.onFailure {
+            }.onErr {
                 countAndReturnUnexpectedError("passing intent", it)
             }
         }
@@ -309,11 +315,14 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
                         setupSdkFlowCollectionJob()
                         runSuspendCatching {
                             initScannerSdk(currentActivity)
-                            avBeam.initNfcCardReader(currentActivity, environmentSetupRepository.eIdNfcWebSocketUrl)
+                            avBeam.initNfcCardReader(
+                                currentActivity,
+                                environmentSetupRepository.eIdNfcWebSocketUrl
+                            )
                             if (nfcAdapter.isEnabled) {
                                 nfcScannerState.update { NfcScannerState.Ready }
                             }
-                        }.onFailure {
+                        }.onErr {
                             countAndReturnUnexpectedError("initializing NFC", it)
                         }
                     }
@@ -328,7 +337,7 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
                                     avBeam.stopScanNfc()
                                 }
                             }
-                        }.onFailure {
+                        }.onErr {
                             countAndReturnUnexpectedError("stopping scan", it)
                         }
                         nfcScannerState.update { NfcScannerState.NfcOff }
@@ -344,7 +353,7 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
                         (scannerState is NfcScannerState.Scanning || scannerState is NfcScannerState.ReadingChipData) -> {
                         runSuspendCatching {
                             avBeam.onResumeNfc()
-                        }.onFailure {
+                        }.onErr {
                             countAndReturnUnexpectedError("resuming scan", it)
                         }
                     }
@@ -354,7 +363,7 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
                         runSuspendCatching {
                             avBeam.onPauseNfc()
                             avBeam.stopScanNfc()
-                        }.onFailure {
+                        }.onErr {
                             countAndReturnUnexpectedError("stopping scan", it)
                         }
                     }
@@ -362,7 +371,7 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
                     activityState is ActivityState.Paused -> {
                         runSuspendCatching {
                             avBeam.onPauseNfc()
-                        }.onFailure {
+                        }.onErr {
                             countAndReturnUnexpectedError("pausing scan", it)
                         }
                     }
@@ -388,7 +397,7 @@ class EIdNfcScannerViewModel @AssistedInject constructor(
         avBeam.stopScanNfc()
         delay(SUCCESS_DELAY_MS)
         nfcScanIsFinished.update { true }
-    }.onFailure {
+    }.onErr {
         Timber.e(t = it, message = "$logTag unexpected error when stopping the NFC scan")
     }
 

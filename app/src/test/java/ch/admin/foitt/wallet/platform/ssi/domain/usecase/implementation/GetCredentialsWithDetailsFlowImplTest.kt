@@ -1,15 +1,18 @@
 package ch.admin.foitt.wallet.platform.ssi.domain.usecase.implementation
 
+import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialFormat
 import ch.admin.foitt.wallet.platform.credential.domain.model.CredentialError
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.MapToCredentialDisplayData
 import ch.admin.foitt.wallet.platform.database.domain.model.ClusterWithDisplaysAndClaims
 import ch.admin.foitt.wallet.platform.database.domain.model.Credential
 import ch.admin.foitt.wallet.platform.database.domain.model.CredentialClusterWithDisplays
+import ch.admin.foitt.wallet.platform.database.domain.model.CredentialStatus
 import ch.admin.foitt.wallet.platform.database.domain.model.VerifiableCredentialEntity
 import ch.admin.foitt.wallet.platform.database.domain.model.VerifiableCredentialWithDisplaysAndClusters
 import ch.admin.foitt.wallet.platform.ssi.domain.model.SsiError
 import ch.admin.foitt.wallet.platform.ssi.domain.repository.VerifiableCredentialWithDisplaysAndClustersRepository
 import ch.admin.foitt.wallet.platform.ssi.domain.usecase.GetCredentialsWithDetailsFlow
+import ch.admin.foitt.wallet.platform.ssi.domain.usecase.implementation.mock.MockCredentialDetail
 import ch.admin.foitt.wallet.platform.ssi.domain.usecase.implementation.mock.MockCredentialDetail.claims
 import ch.admin.foitt.wallet.platform.ssi.domain.usecase.implementation.mock.MockCredentialDetail.credentialDisplay1
 import ch.admin.foitt.wallet.platform.ssi.domain.usecase.implementation.mock.MockCredentialDetail.credentialDisplay2
@@ -113,7 +116,13 @@ class GetCredentialsWithDetailsFlowImplTest {
     fun `Getting the credentialsWithDisplays flow maps errors from the MapToCredentialDisplayData use case`() = runTest {
         val exception = IllegalStateException("map to credential display data error")
         coEvery {
-            mockMapToCredentialDisplayData(mockVerifiableCredential1, listOf(credentialDisplay1), claims)
+            mockMapToCredentialDisplayData(
+                mockVerifiableCredential1,
+                listOf(credentialDisplay1),
+                claims,
+                CredentialFormat.VC_SD_JWT,
+                CredentialStatus.VALID,
+            )
         } returns Err(CredentialError.Unexpected(exception))
 
         val result = getCredentialsWithDetailsFlow().firstOrNull()
@@ -133,7 +142,8 @@ class GetCredentialsWithDetailsFlowImplTest {
                 claimsWithDisplays = claims,
             )
         )
-
+        coEvery { mockCredentialWithDisplaysAndClusters1.credential } returns MockCredentialDetail.credential
+        every { mockCredentialWithDisplaysAndClusters1.nextPresentableStatus } returns CredentialStatus.VALID
         every {
             mockCredentialWithDisplaysAndClusters2.verifiableCredential
         } returns mockVerifiableCredential2
@@ -144,17 +154,30 @@ class GetCredentialsWithDetailsFlowImplTest {
                 claimsWithDisplays = claims,
             )
         )
-
+        coEvery { mockCredentialWithDisplaysAndClusters2.credential } returns MockCredentialDetail.credential
+        every { mockCredentialWithDisplaysAndClusters2.nextPresentableStatus } returns CredentialStatus.VALID
         coEvery {
             mockCredentialWithDisplaysAndClustersRepository.getVerifiableCredentialsWithDisplaysAndClustersFlow()
         } returns flowOf(Ok(listOf(mockCredentialWithDisplaysAndClusters1, mockCredentialWithDisplaysAndClusters2)))
 
         coEvery {
-            mockMapToCredentialDisplayData(mockVerifiableCredential1, listOf(credentialDisplay1), claims)
+            mockMapToCredentialDisplayData(
+                mockVerifiableCredential1,
+                listOf(credentialDisplay1),
+                claims,
+                CredentialFormat.VC_SD_JWT,
+                CredentialStatus.VALID,
+            )
         } returns Ok(credentialDisplayData1)
 
         coEvery {
-            mockMapToCredentialDisplayData(mockVerifiableCredential2, listOf(credentialDisplay2), claims)
+            mockMapToCredentialDisplayData(
+                mockVerifiableCredential2,
+                listOf(credentialDisplay2),
+                claims,
+                CredentialFormat.VC_SD_JWT,
+                CredentialStatus.VALID,
+            )
         } returns Ok(credentialDisplayData2)
     }
 }

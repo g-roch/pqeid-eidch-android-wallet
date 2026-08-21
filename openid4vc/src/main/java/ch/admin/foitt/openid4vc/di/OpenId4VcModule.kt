@@ -5,19 +5,15 @@ import ch.admin.foitt.openid4vc.data.FetchDidLogRepositoryImpl
 import ch.admin.foitt.openid4vc.data.PresentationRequestRepositoryImpl
 import ch.admin.foitt.openid4vc.data.TypeMetadataRepositoryImpl
 import ch.admin.foitt.openid4vc.data.VcSchemaRepositoryImpl
-import ch.admin.foitt.openid4vc.di.ExternalOpenId4VcModule.Companion.NAMED_DEFAULT_ENGINE
-import ch.admin.foitt.openid4vc.di.ExternalOpenId4VcModule.Companion.NAMED_DEFAULT_HTTP_CLIENT
-import ch.admin.foitt.openid4vc.di.ExternalOpenId4VcModule.Companion.NAMED_GZIP_ENGINE
-import ch.admin.foitt.openid4vc.di.ExternalOpenId4VcModule.Companion.NAMED_GZIP_HTTP_CLIENT
 import ch.admin.foitt.openid4vc.domain.repository.CredentialOfferRepository
 import ch.admin.foitt.openid4vc.domain.repository.FetchDidLogRepository
 import ch.admin.foitt.openid4vc.domain.repository.PresentationRequestRepository
 import ch.admin.foitt.openid4vc.domain.repository.TypeMetadataRepository
 import ch.admin.foitt.openid4vc.domain.repository.VcSchemaRepository
-import ch.admin.foitt.openid4vc.domain.usecase.CreateAnyDescriptorMapByPresentationDefinition
 import ch.admin.foitt.openid4vc.domain.usecase.CreateAnyVerifiablePresentation
 import ch.admin.foitt.openid4vc.domain.usecase.CreateCredentialRequest
 import ch.admin.foitt.openid4vc.domain.usecase.CreateCredentialRequestProofsJwt
+import ch.admin.foitt.openid4vc.domain.usecase.CreateDPoPProofJwt
 import ch.admin.foitt.openid4vc.domain.usecase.CreateJwk
 import ch.admin.foitt.openid4vc.domain.usecase.DeclinePresentation
 import ch.admin.foitt.openid4vc.domain.usecase.DeleteKeyPair
@@ -28,17 +24,19 @@ import ch.admin.foitt.openid4vc.domain.usecase.FetchRawAndParsedIssuerCredential
 import ch.admin.foitt.openid4vc.domain.usecase.FetchVerifiableCredential
 import ch.admin.foitt.openid4vc.domain.usecase.GetAuthorizationResponseConfig
 import ch.admin.foitt.openid4vc.domain.usecase.GetHardwareKeyPair
+import ch.admin.foitt.openid4vc.domain.usecase.GetKeyPairForKeyBinding
+import ch.admin.foitt.openid4vc.domain.usecase.GetSignedMetadataDid
 import ch.admin.foitt.openid4vc.domain.usecase.GetSoftwareKeyPair
 import ch.admin.foitt.openid4vc.domain.usecase.GetVerifiableCredentialParams
 import ch.admin.foitt.openid4vc.domain.usecase.ResolveDid
 import ch.admin.foitt.openid4vc.domain.usecase.ResolvePublicKey
-import ch.admin.foitt.openid4vc.domain.usecase.SubmitAnyCredentialPresentation
+import ch.admin.foitt.openid4vc.domain.usecase.SubmitAnyCredentialNetworkPresentation
 import ch.admin.foitt.openid4vc.domain.usecase.ValidateIssuerMetadataJwt
 import ch.admin.foitt.openid4vc.domain.usecase.VerifyRequestObjectSignature
-import ch.admin.foitt.openid4vc.domain.usecase.implementation.CreateAnyDescriptorMapByPresentationDefinitionImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.CreateAnyVerifiablePresentationImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.CreateCredentialRequestImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.CreateCredentialRequestProofsJwtImpl
+import ch.admin.foitt.openid4vc.domain.usecase.implementation.CreateDPoPProofJwtImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.CreateJwkImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.DeclinePresentationImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.DeleteKeyPairImpl
@@ -49,11 +47,13 @@ import ch.admin.foitt.openid4vc.domain.usecase.implementation.FetchRawAndParsedI
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.FetchVerifiableCredentialImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.GetAuthorizationResponseConfigImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.GetHardwareKeyPairImpl
+import ch.admin.foitt.openid4vc.domain.usecase.implementation.GetKeyPairForKeyBindingImpl
+import ch.admin.foitt.openid4vc.domain.usecase.implementation.GetSignedMetadataDidImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.GetSoftwareKeyPairImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.GetVerifiableCredentialParamsImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.ResolveDidImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.ResolvePublicKeyImpl
-import ch.admin.foitt.openid4vc.domain.usecase.implementation.SubmitAnyCredentialPresentationImpl
+import ch.admin.foitt.openid4vc.domain.usecase.implementation.SubmitAnyCredentialNetworkPresentationImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.ValidateIssuerMetadataJwtImpl
 import ch.admin.foitt.openid4vc.domain.usecase.implementation.VerifyRequestObjectSignatureImpl
 import ch.admin.foitt.openid4vc.domain.usecase.jwe.CreateJWE
@@ -64,20 +64,21 @@ import ch.admin.foitt.openid4vc.domain.usecase.jwt.VerifyJwtSignature
 import ch.admin.foitt.openid4vc.domain.usecase.jwt.VerifyJwtSignatureFromDid
 import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.VerifyJwtSignatureFromDidImpl
 import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.VerifyJwtSignatureImpl
-import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.CreateVcSdJwtDescriptorMap
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.CreateVcSdJwtVerifiablePresentation
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.FetchTypeMetadata
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.FetchVcSchema
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.FetchVcSdJwtCredential
+import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.VerifyVcSdJwtBatchConsistency
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.VerifyVcSdJwtSignature
-import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.implementation.CreateVcSdJwtDescriptorMapImpl
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.implementation.CreateVcSdJwtVerifiablePresentationImpl
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.implementation.FetchTypeMetadataImpl
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.implementation.FetchVcSchemaImpl
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.implementation.FetchVcSdJwtCredentialImpl
+import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.implementation.VerifyVcSdJwtBatchConsistencyImpl
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.implementation.VerifyVcSdJwtSignatureImpl
 import ch.admin.foitt.openid4vc.utils.ContentLengthLimiter
 import ch.admin.foitt.openid4vc.utils.SafeJson
+import ch.admin.foitt.swiyu.shared.consistency.SdJwtCredentialConsistencyChecker
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -88,6 +89,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.UserAgent
 import io.ktor.client.plugins.compression.ContentEncoding
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
@@ -101,9 +103,9 @@ import timber.log.Timber
 import java.time.Clock
 import javax.inject.Named
 
-@Module(includes = [OpenId4VcModule::class])
+@Module
 @InstallIn(ActivityRetainedComponent::class)
-class ExternalOpenId4VcModule {
+class OpenId4VcModule {
     @Provides
     @ActivityRetainedScoped
     internal fun provideCredentialOfferRepository(
@@ -118,38 +120,19 @@ class ExternalOpenId4VcModule {
         safeJson: SafeJson,
     ): PresentationRequestRepository = PresentationRequestRepositoryImpl(httpClient, safeJson)
 
-    companion object {
-        const val NAMED_DEFAULT_HTTP_CLIENT = "defaultHttpClient"
-        const val NAMED_DEFAULT_ENGINE = "defaultEngine"
-        const val NAMED_GZIP_HTTP_CLIENT = "gzipHttpClient"
-        const val NAMED_GZIP_ENGINE = "gzipEngine"
-    }
-}
-
-@Module(includes = [OpenId4VCBindings::class])
-@InstallIn(ActivityRetainedComponent::class)
-interface ExternalOpenId4VcBindings {
-    @Binds
-    fun bindVerifyJwtSignature(
-        useCase: VerifyJwtSignatureImpl
-    ): VerifyJwtSignature
-
-    @Binds
-    fun bindVerifySdJwtCredentialSignature(
-        useCase: VerifyVcSdJwtSignatureImpl
-    ): VerifyVcSdJwtSignature
-}
-
-@Module
-@InstallIn(ActivityRetainedComponent::class)
-internal class OpenId4VcModule {
-
     @ActivityRetainedScoped
     @Provides
     @Named(NAMED_DEFAULT_HTTP_CLIENT)
-    fun provideDefaultHttpClient(@Named(NAMED_DEFAULT_ENGINE) engine: HttpClientEngine, jsonSerializer: Json): HttpClient {
+    internal fun provideDefaultHttpClient(
+        @Named(NAMED_DEFAULT_ENGINE) engine: HttpClientEngine,
+        @Named(NAMED_USER_AGENT) userAgent: String,
+        jsonSerializer: Json,
+    ): HttpClient {
         return HttpClient(engine) {
             expectSuccess = true
+            install(UserAgent) {
+                agent = userAgent
+            }
             install(ContentLengthLimiter) {
                 limitInBytes = MAX_CONTENT_SIZE
             }
@@ -174,9 +157,16 @@ internal class OpenId4VcModule {
     @ActivityRetainedScoped
     @Provides
     @Named(NAMED_GZIP_HTTP_CLIENT)
-    fun provideGzipHttpClient(@Named(NAMED_GZIP_ENGINE) engine: HttpClientEngine, jsonSerializer: Json): HttpClient {
+    internal fun provideGzipHttpClient(
+        @Named(NAMED_GZIP_ENGINE) engine: HttpClientEngine,
+        @Named(NAMED_USER_AGENT) userAgent: String,
+        jsonSerializer: Json,
+    ): HttpClient {
         return HttpClient(engine) {
             expectSuccess = true
+            install(UserAgent) {
+                agent = userAgent
+            }
             install(ContentLengthLimiter) {
                 limitInBytes = MAX_CONTENT_SIZE
             }
@@ -203,15 +193,15 @@ internal class OpenId4VcModule {
 
     @Provides
     @Named(NAMED_DEFAULT_ENGINE)
-    fun provideHttpClientEngine(): HttpClientEngine = OkHttp.create()
+    internal fun provideHttpClientEngine(): HttpClientEngine = OkHttp.create()
 
     @Provides
     @Named(NAMED_GZIP_ENGINE)
-    fun provideGzipHttpClientEngine(): HttpClientEngine = OkHttp.create()
+    internal fun provideGzipHttpClientEngine(): HttpClientEngine = OkHttp.create()
 
     @OptIn(ExperimentalSerializationApi::class)
     @Provides
-    fun provideJsonSerializer(): Json {
+    internal fun provideJsonSerializer(): Json {
         return Json {
             ignoreUnknownKeys = true
             explicitNulls = false
@@ -221,16 +211,26 @@ internal class OpenId4VcModule {
     }
 
     @Provides
-    fun provideSafeJson(json: Json) = SafeJson(json)
+    internal fun provideSafeJson(json: Json) = SafeJson(json)
 
     @ActivityRetainedScoped
     @Provides
-    fun provideClock(): Clock = Clock.systemUTC()
+    internal fun provideClock(): Clock = Clock.systemUTC()
 
-    private companion object {
-        const val SOCKET_TIMEOUT_MILLIS = 30 * 1000L
-        const val REQUEST_TIMEOUT_MILLIS = 60 * 1000L
-        const val MAX_CONTENT_SIZE = 150 * 1024 * 1024L // limit http responses to 150MB
+    @Provides
+    internal fun provideSdJwtCredentialConsistencyChecker(): SdJwtCredentialConsistencyChecker =
+        SdJwtCredentialConsistencyChecker()
+
+    companion object {
+        const val NAMED_DEFAULT_HTTP_CLIENT = "defaultHttpClient"
+        const val NAMED_DEFAULT_ENGINE = "defaultEngine"
+        const val NAMED_GZIP_HTTP_CLIENT = "gzipHttpClient"
+        const val NAMED_GZIP_ENGINE = "gzipEngine"
+        const val NAMED_USER_AGENT = "userAgent"
+
+        private const val SOCKET_TIMEOUT_MILLIS = 30 * 1000L
+        private const val REQUEST_TIMEOUT_MILLIS = 60 * 1000L
+        private const val MAX_CONTENT_SIZE = 25 * 1024 * 1024L // limit http responses to 25MB
     }
 }
 
@@ -274,14 +274,19 @@ internal interface OpenId4VCBindings {
     ): CreateCredentialRequestProofsJwt
 
     @Binds
+    fun bindCreateDPoPProofJwt(
+        useCase: CreateDPoPProofJwtImpl
+    ): CreateDPoPProofJwt
+
+    @Binds
     fun bindFetchPresentationRequest(
         useCase: FetchPresentationRequestImpl
     ): FetchPresentationRequest
 
     @Binds
     fun bindSubmitAnyCredentialPresentation(
-        useCase: SubmitAnyCredentialPresentationImpl
-    ): SubmitAnyCredentialPresentation
+        useCase: SubmitAnyCredentialNetworkPresentationImpl
+    ): SubmitAnyCredentialNetworkPresentation
 
     @Binds
     fun bindCreateAnyVerifiablePresentation(
@@ -292,16 +297,6 @@ internal interface OpenId4VCBindings {
     fun bindCreateVcSdJwtVerifiablePresentation(
         useCase: CreateVcSdJwtVerifiablePresentationImpl
     ): CreateVcSdJwtVerifiablePresentation
-
-    @Binds
-    fun bindCreateAnyDescriptorMaps(
-        useCase: CreateAnyDescriptorMapByPresentationDefinitionImpl
-    ): CreateAnyDescriptorMapByPresentationDefinition
-
-    @Binds
-    fun bindCreateVcSdJwtDescriptorMap(
-        useCase: CreateVcSdJwtDescriptorMapImpl
-    ): CreateVcSdJwtDescriptorMap
 
     @Binds
     fun bindDeclinePresentation(
@@ -317,6 +312,11 @@ internal interface OpenId4VCBindings {
     fun bindGetSoftwareKeyPair(
         useCase: GetSoftwareKeyPairImpl
     ): GetSoftwareKeyPair
+
+    @Binds
+    fun bindGetKeyPairForKeyBinding(
+        useCase: GetKeyPairForKeyBindingImpl
+    ): GetKeyPairForKeyBinding
 
     @Binds
     fun bindDeleteKeyPair(
@@ -399,4 +399,24 @@ internal interface OpenId4VCBindings {
     fun bindVerifyJwtSignatureFromDid(
         useCase: VerifyJwtSignatureFromDidImpl
     ): VerifyJwtSignatureFromDid
+
+    @Binds
+    fun bindVerifyJwtSignature(
+        useCase: VerifyJwtSignatureImpl
+    ): VerifyJwtSignature
+
+    @Binds
+    fun bindVerifySdJwtCredentialSignature(
+        useCase: VerifyVcSdJwtSignatureImpl
+    ): VerifyVcSdJwtSignature
+
+    @Binds
+    fun bindVerifyVcSdJwtBatchConsistency(
+        useCase: VerifyVcSdJwtBatchConsistencyImpl
+    ): VerifyVcSdJwtBatchConsistency
+
+    @Binds
+    fun bindGetSignedMetadataDid(
+        useCase: GetSignedMetadataDidImpl
+    ): GetSignedMetadataDid
 }

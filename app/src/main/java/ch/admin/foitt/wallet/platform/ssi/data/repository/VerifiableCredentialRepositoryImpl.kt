@@ -15,7 +15,6 @@ import com.github.michaelbull.result.mapError
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.time.Instant
 import javax.inject.Inject
 
 class VerifiableCredentialRepositoryImpl @Inject constructor(
@@ -40,18 +39,6 @@ class VerifiableCredentialRepositoryImpl @Inject constructor(
         SsiError.Unexpected(throwable)
     }
 
-    override suspend fun onBundleItemUpdate(id: Long): Result<Int, VerifiableCredentialRepositoryError> = runSuspendCatching {
-        withContext(ioDispatcher) {
-            verifiableCredentialDao().updatedAt(
-                id = id,
-                updatedAt = Instant.now().epochSecond,
-            )
-        }
-    }.mapError { throwable ->
-        Timber.e(throwable)
-        SsiError.Unexpected(throwable)
-    }
-
     override suspend fun updateProgressionStateByCredentialId(
         credentialId: Long,
         progressionState: VerifiableProgressionState,
@@ -60,6 +47,21 @@ class VerifiableCredentialRepositoryImpl @Inject constructor(
             verifiableCredentialDao().updateProgressStateByCredentialId(
                 id = credentialId,
                 progressionState = progressionState,
+            )
+        }
+    }.mapError { throwable ->
+        Timber.e(throwable)
+        SsiError.Unexpected(throwable)
+    }
+
+    override suspend fun updateNextBundleIdByCredentialId(
+        credentialId: Long,
+        nextPresentableBundleItemId: Long
+    ): Result<Int, VerifiableCredentialRepositoryError> = runSuspendCatching {
+        withContext(ioDispatcher) {
+            verifiableCredentialDao().updateNextBundleIdByCredentialId(
+                credentialId = credentialId,
+                nextPresentableBundleItemId = nextPresentableBundleItemId
             )
         }
     }.mapError { throwable ->

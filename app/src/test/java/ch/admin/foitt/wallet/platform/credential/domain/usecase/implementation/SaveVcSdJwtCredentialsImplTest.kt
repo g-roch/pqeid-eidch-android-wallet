@@ -1,16 +1,14 @@
 package ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation
 
-import android.annotation.SuppressLint
 import ch.admin.foitt.openid4vc.domain.model.SigningAlgorithm
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialFormat
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.IssuerCredentialInfo
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.RawAndParsedIssuerCredentialInfo
+import ch.admin.foitt.openid4vc.domain.model.jwt.Jwt
 import ch.admin.foitt.openid4vc.domain.model.keyBinding.KeyBinding
 import ch.admin.foitt.openid4vc.domain.model.keyBinding.KeyBindingType
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSchema
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSdJwtCredential
-import ch.admin.foitt.wallet.platform.actorEnvironment.domain.model.ActorEnvironment
-import ch.admin.foitt.wallet.platform.actorMetadata.domain.usecase.CacheIssuerDisplayData
 import ch.admin.foitt.wallet.platform.credential.domain.model.AnyDisplays
 import ch.admin.foitt.wallet.platform.credential.domain.model.CredentialError
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.FetchTrustForIssuance
@@ -18,9 +16,6 @@ import ch.admin.foitt.wallet.platform.credential.domain.usecase.GenerateAnyDispl
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.SaveVcSdJwtCredentials
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.credentialConfig
 import ch.admin.foitt.wallet.platform.credential.domain.usecase.implementation.mock.MockFetchCredential.oneConfigCredentialInformation
-import ch.admin.foitt.wallet.platform.nonCompliance.domain.model.ActorComplianceState
-import ch.admin.foitt.wallet.platform.nonCompliance.domain.model.NonComplianceData
-import ch.admin.foitt.wallet.platform.nonCompliance.domain.usecase.FetchNonComplianceData
 import ch.admin.foitt.wallet.platform.oca.domain.model.OcaBundle
 import ch.admin.foitt.wallet.platform.oca.domain.model.OcaError
 import ch.admin.foitt.wallet.platform.oca.domain.model.RawOcaBundle
@@ -29,22 +24,23 @@ import ch.admin.foitt.wallet.platform.oca.domain.usecase.FetchVcMetadataByFormat
 import ch.admin.foitt.wallet.platform.oca.domain.usecase.OcaBundler
 import ch.admin.foitt.wallet.platform.ssi.domain.model.SsiError
 import ch.admin.foitt.wallet.platform.ssi.domain.repository.CredentialOfferRepository
-import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.IdentityV1TrustStatement
+import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.IdentityV2TrustStatement
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.TrustCheckResult
 import ch.admin.foitt.wallet.platform.trustRegistry.domain.model.VcSchemaTrustStatus
 import ch.admin.foitt.wallet.util.assertErrorType
 import ch.admin.foitt.wallet.util.assertOk
-import ch.admin.foitt.wallet.util.assertSuccessType
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import io.mockk.MockKAnnotations
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.impl.annotations.MockK
 import io.mockk.unmockkAll
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json.Default.parseToJsonElement
+import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -54,27 +50,6 @@ import java.time.Instant
 
 class SaveVcSdJwtCredentialsImplTest {
     @MockK
-    private lateinit var mockVcSdJwtCredential: VcSdJwtCredential
-
-    @MockK
-    private lateinit var mockTrustedTrustCheckResult: TrustCheckResult
-
-    @MockK
-    private lateinit var mockIdentityTrustStatement: IdentityV1TrustStatement
-
-    @MockK
-    private lateinit var mockFetchNonComplianceData: FetchNonComplianceData
-
-    @MockK
-    private lateinit var mockCacheIssuerDisplayData: CacheIssuerDisplayData
-
-    @MockK
-    private lateinit var mockCredentialOfferRepository: CredentialOfferRepository
-
-    @MockK
-    private lateinit var mockFetchTrustForIssuance: FetchTrustForIssuance
-
-    @MockK
     private lateinit var mockFetchVcMetadataByFormat: FetchVcMetadataByFormat
 
     @MockK
@@ -83,6 +58,24 @@ class SaveVcSdJwtCredentialsImplTest {
     @MockK
     private lateinit var mockGenerateAnyDisplays: GenerateAnyDisplays
 
+    @MockK
+    private lateinit var mockCredentialOfferRepository: CredentialOfferRepository
+
+    @MockK
+    private lateinit var mockFetchTrustForIssuance: FetchTrustForIssuance
+
+    @MockK
+    private lateinit var mockIdentityTrustStatement: IdentityV2TrustStatement
+
+    @MockK
+    private lateinit var mockIssuerCredentialInfoJwt: Jwt
+
+    @MockK
+    private lateinit var mockVcSdJwtCredential: VcSdJwtCredential
+
+    @MockK
+    private lateinit var mockTrustCheckResult: TrustCheckResult
+
     private lateinit var useCase: SaveVcSdJwtCredentials
 
     @BeforeEach
@@ -90,11 +83,9 @@ class SaveVcSdJwtCredentialsImplTest {
         MockKAnnotations.init(this)
 
         useCase = SaveVcSdJwtCredentialsImpl(
-            fetchNonComplianceData = mockFetchNonComplianceData,
             fetchVcMetadataByFormat = mockFetchVcMetadataByFormat,
             ocaBundler = mockOcaBundler,
             generateAnyDisplays = mockGenerateAnyDisplays,
-            cacheIssuerDisplayData = mockCacheIssuerDisplayData,
             credentialOfferRepository = mockCredentialOfferRepository,
             fetchTrustForIssuance = mockFetchTrustForIssuance,
         )
@@ -108,44 +99,30 @@ class SaveVcSdJwtCredentialsImplTest {
     }
 
     @Test
-    fun `Saving credential maps errors from fetching the vc metadata`() = runTest {
-        coEvery { mockFetchVcMetadataByFormat(any()) } returns Err(OcaError.InvalidOca)
-
-        useCase(
-            vcSdJwtCredentials = listOf(mockVcSdJwtCredential),
-            issuerUrl = ISSUER_URL,
-            rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
-                issuerCredentialInfo = oneConfigCredentialInformation,
-                rawIssuerCredentialInfo = ""
-            ),
-            credentialConfig = credentialConfig,
-        ).assertErrorType(CredentialError.InvalidCredentialOffer::class)
-    }
-
-    @SuppressLint("CheckResult")
-    @Test
     fun `Saving a credential runs specific steps`() = runTest {
         val result = useCase(
             vcSdJwtCredentials = listOf(mockVcSdJwtCredential),
             issuerUrl = ISSUER_URL,
-            rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
-                issuerCredentialInfo = oneConfigCredentialInformation,
-                rawIssuerCredentialInfo = ""
-            ),
+            rawAndParsedCredentialInfo = rawAndParsedIssuerCredentialInfo,
+            identityTrustStatement = mockIdentityTrustStatement,
             credentialConfig = credentialConfig,
-        )
-
-        result.assertSuccessType(Long::class)
-        assertEquals(Ok(CREDENTIAL_ID), result)
+        ).assertOk()
+        assertEquals(CREDENTIAL_ID, result)
 
         coVerifyOrder {
             mockFetchVcMetadataByFormat(mockVcSdJwtCredential)
+            mockFetchTrustForIssuance(
+                identityTrustStatement = mockIdentityTrustStatement,
+                protectedIssuanceAuthorizationTrustStatement = null,
+                issuerDid = ISSUER_DID,
+                vcSchemaId = VC_SCHEMA_ID,
+            )
             mockOcaBundler(vcMetadata.rawOcaBundle!!.rawOcaBundle)
             mockGenerateAnyDisplays(
                 anyCredential = mockVcSdJwtCredential,
                 issuerInfo = oneConfigCredentialInformation,
                 trustStatement = mockIdentityTrustStatement,
-                metadata = credentialConfig,
+                credentialConfiguration = credentialConfig,
                 ocaBundle = ocaBundle
             )
             mockCredentialOfferRepository.saveCredentialOffer(
@@ -160,7 +137,77 @@ class SaveVcSdJwtCredentialsImplTest {
                 credentialDisplays = anyDisplays.credentialDisplays,
                 clusters = anyDisplays.clusters,
                 rawCredentialData = any(),
-                issuerUrl = any(),
+                issuerUrl = ISSUER_URL,
+            )
+        }
+    }
+
+    @Test
+    fun `Saving credential maps errors from fetching the vc metadata`() = runTest {
+        coEvery { mockFetchVcMetadataByFormat(any()) } returns Err(OcaError.InvalidOca)
+
+        useCase(
+            vcSdJwtCredentials = listOf(mockVcSdJwtCredential),
+            issuerUrl = ISSUER_URL,
+            rawAndParsedCredentialInfo = rawAndParsedIssuerCredentialInfo,
+            identityTrustStatement = mockIdentityTrustStatement,
+            credentialConfig = credentialConfig,
+        ).assertErrorType(CredentialError.InvalidCredentialOffer::class)
+    }
+
+    @Test
+    fun `Saving credential maps errors from fetching the trust result`() = runTest {
+        val exception = IllegalStateException("trust error")
+        coEvery {
+            mockFetchTrustForIssuance(any(), any(), any(), any())
+        } returns Err(CredentialError.Unexpected(exception))
+
+        useCase(
+            vcSdJwtCredentials = listOf(mockVcSdJwtCredential),
+            issuerUrl = ISSUER_URL,
+            rawAndParsedCredentialInfo = rawAndParsedIssuerCredentialInfo,
+            identityTrustStatement = mockIdentityTrustStatement,
+            credentialConfig = credentialConfig,
+        ).assertErrorType(CredentialError.Unexpected::class)
+    }
+
+    @Test
+    fun `An Untrusted trust check results in no trusted issuer names`() = runTest {
+        every { mockTrustCheckResult.identityTrustStatement } returns null
+        every { mockTrustCheckResult.vcSchemaTrustStatus } returns VcSchemaTrustStatus.NOT_TRUSTED
+
+        useCase(
+            vcSdJwtCredentials = listOf(mockVcSdJwtCredential),
+            issuerUrl = ISSUER_URL,
+            rawAndParsedCredentialInfo = rawAndParsedIssuerCredentialInfo,
+            identityTrustStatement = mockIdentityTrustStatement,
+            credentialConfig = credentialConfig,
+        ).assertOk()
+
+        coVerifyOrder {
+            mockGenerateAnyDisplays(any(), any(), null, any(), any())
+        }
+    }
+
+    @Test
+    fun `Saving credential does not use oca bundle if error during processing`() = runTest {
+        coEvery { mockOcaBundler(RAW_OCA_BUNDLE) } returns Err(OcaError.InvalidOca)
+
+        useCase(
+            vcSdJwtCredentials = listOf(mockVcSdJwtCredential),
+            issuerUrl = ISSUER_URL,
+            rawAndParsedCredentialInfo = rawAndParsedIssuerCredentialInfo,
+            identityTrustStatement = mockIdentityTrustStatement,
+            credentialConfig = credentialConfig,
+        ).assertOk()
+
+        coVerify {
+            mockGenerateAnyDisplays(
+                anyCredential = any(),
+                issuerInfo = any(),
+                trustStatement = any(),
+                credentialConfiguration = any(),
+                ocaBundle = null
             )
         }
     }
@@ -175,36 +222,11 @@ class SaveVcSdJwtCredentialsImplTest {
         val error = useCase(
             vcSdJwtCredentials = listOf(mockVcSdJwtCredential),
             issuerUrl = ISSUER_URL,
-            rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
-                issuerCredentialInfo = oneConfigCredentialInformation,
-                rawIssuerCredentialInfo = ""
-            ),
+            rawAndParsedCredentialInfo = rawAndParsedIssuerCredentialInfo,
+            identityTrustStatement = mockIdentityTrustStatement,
             credentialConfig = credentialConfig,
         ).assertErrorType(CredentialError.Unexpected::class)
         assertEquals(exception, error.cause)
-    }
-
-    @Test
-    fun `An Untrusted trust check results in no trusted issuer names`() = runTest {
-        val untrustedIssuer =
-            TrustCheckResult(actorEnvironment = ActorEnvironment.PRODUCTION, null, VcSchemaTrustStatus.NOT_TRUSTED)
-        coEvery {
-            mockFetchTrustForIssuance(any(), any())
-        } returns untrustedIssuer
-
-        useCase(
-            vcSdJwtCredentials = listOf(mockVcSdJwtCredential),
-            issuerUrl = ISSUER_URL,
-            rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
-                issuerCredentialInfo = oneConfigCredentialInformation,
-                rawIssuerCredentialInfo = ""
-            ),
-            credentialConfig = credentialConfig,
-        ).assertOk()
-
-        coVerifyOrder {
-            mockGenerateAnyDisplays(any(), any(), null, any(), any())
-        }
     }
 
     @Test
@@ -230,10 +252,8 @@ class SaveVcSdJwtCredentialsImplTest {
         val error = useCase(
             vcSdJwtCredentials = listOf(mockVcSdJwtCredential),
             issuerUrl = ISSUER_URL,
-            rawAndParsedCredentialInfo = RawAndParsedIssuerCredentialInfo(
-                issuerCredentialInfo = oneConfigCredentialInformation,
-                rawIssuerCredentialInfo = ""
-            ),
+            rawAndParsedCredentialInfo = rawAndParsedIssuerCredentialInfo,
+            identityTrustStatement = mockIdentityTrustStatement,
             credentialConfig = credentialConfig,
         ).assertErrorType(CredentialError.Unexpected::class)
         assertEquals(exception.message, error.cause?.message)
@@ -243,10 +263,13 @@ class SaveVcSdJwtCredentialsImplTest {
         credentialInfo: IssuerCredentialInfo = oneConfigCredentialInformation,
     ) {
         every { credentialConfig.format } returns CredentialFormat.VC_SD_JWT
+        every { credentialConfig.protectedIssuanceAuthorizationTrustStatement } returns null
+
+        every { mockIssuerCredentialInfoJwt.payloadString } returns ""
 
         every {
             mockVcSdJwtCredential.getClaimsForPresentation()
-        } returns parseToJsonElement(CREDENTIAL_CLAIMS_FOR_PRESENTATION)
+        } returns parseToJsonElement(CREDENTIAL_CLAIMS_FOR_PRESENTATION).jsonObject
         every { mockVcSdJwtCredential.issuer } returns ISSUER_DID
         every { mockVcSdJwtCredential.vcSchemaId } returns VC_SCHEMA_ID
         coEvery { mockVcSdJwtCredential.keyBinding } returns keyBinding
@@ -256,29 +279,24 @@ class SaveVcSdJwtCredentialsImplTest {
         coEvery { mockVcSdJwtCredential.validUntilInstant } returns VC_VALID_UNTIL
 
         coEvery {
-            mockFetchTrustForIssuance(any(), any())
-        } returns mockTrustedTrustCheckResult
+            mockFetchTrustForIssuance(any(), any(), any(), any())
+        } returns Ok(mockTrustCheckResult)
 
         coEvery { mockFetchVcMetadataByFormat(mockVcSdJwtCredential) } returns Ok(vcMetadata)
 
-        coEvery { mockFetchNonComplianceData(any()) } returns NonComplianceData(ActorComplianceState.UNKNOWN, emptyList())
-
-        coEvery { mockCacheIssuerDisplayData(any(), any(), any()) } returns Unit
-
-        coEvery { mockOcaBundler(any()) } returns Ok(ocaBundle)
+        coEvery { mockOcaBundler(RAW_OCA_BUNDLE) } returns Ok(ocaBundle)
 
         every { mockIdentityTrustStatement.entityName } returns orgNames
 
-        coEvery { mockTrustedTrustCheckResult.actorTrustStatement } returns mockIdentityTrustStatement
-        coEvery { mockTrustedTrustCheckResult.actorEnvironment } returns ActorEnvironment.PRODUCTION
-        coEvery { mockTrustedTrustCheckResult.vcSchemaTrustStatus } returns VcSchemaTrustStatus.TRUSTED
+        coEvery { mockTrustCheckResult.identityTrustStatement } returns mockIdentityTrustStatement
+        coEvery { mockTrustCheckResult.vcSchemaTrustStatus } returns VcSchemaTrustStatus.TRUSTED
 
         coEvery {
             mockGenerateAnyDisplays(
                 anyCredential = any(),
                 issuerInfo = credentialInfo,
                 trustStatement = any(),
-                metadata = credentialConfig,
+                credentialConfiguration = credentialConfig,
                 ocaBundle = any(),
             )
         } returns Ok(anyDisplays)
@@ -304,10 +322,12 @@ class SaveVcSdJwtCredentialsImplTest {
             mockCredentialOfferRepository.saveDeferredCredentialOffer(
                 transactionId = any(),
                 accessToken = any(),
+                tokenType = any(),
                 refreshToken = any(),
                 endpoint = any(),
                 pollInterval = any(),
                 keyBindings = any(),
+                dpopKeyBinding = any(),
                 format = any(),
                 issuerDisplays = any(),
                 credentialDisplays = any(),
@@ -316,6 +336,13 @@ class SaveVcSdJwtCredentialsImplTest {
                 issuerUrl = any(),
             )
         } returns Ok(DEFERRED_CREDENTIAL_ID)
+    }
+
+    private val rawAndParsedIssuerCredentialInfo by lazy {
+        RawAndParsedIssuerCredentialInfo(
+            issuerCredentialInfo = oneConfigCredentialInformation,
+            rawIssuerCredentialInfo = mockIssuerCredentialInfoJwt
+        )
     }
 
     private companion object Companion {

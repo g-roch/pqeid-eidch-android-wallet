@@ -1,8 +1,12 @@
 package ch.admin.foitt.wallet.platform.credentialStatus.domain.usecase.implementation
 
+import ch.admin.foitt.didResolver.domain.DidResolverHelper
 import ch.admin.foitt.openid4vc.domain.model.jwt.Jwt
 import ch.admin.foitt.openid4vc.domain.model.jwt.VerifyJwtSignatureFromDidError
 import ch.admin.foitt.openid4vc.domain.usecase.jwt.VerifyJwtSignatureFromDid
+import ch.admin.foitt.wallet.platform.actorEnvironment.domain.model.ActorEnvironment
+import ch.admin.foitt.wallet.platform.actorEnvironment.domain.usecase.GetActorEnvironment
+import ch.admin.foitt.wallet.platform.credentialStatus.domain.model.CredentialStatusError
 import ch.admin.foitt.wallet.platform.credentialStatus.domain.model.TokenStatusListResponse
 import ch.admin.foitt.wallet.platform.credentialStatus.domain.model.ValidateTokenStatusStatusListError
 import ch.admin.foitt.wallet.platform.credentialStatus.domain.model.toValidateTokenStatusListError
@@ -14,19 +18,22 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.coroutines.coroutineBinding
 import com.github.michaelbull.result.coroutines.runSuspendCatching
 import com.github.michaelbull.result.mapError
+import timber.log.Timber
 import java.time.Instant
 import javax.inject.Inject
 
 class ValidateTokenStatusListImpl @Inject constructor(
-    private val safeJson: SafeJson,
+    private val didResolverHelper: DidResolverHelper,
+    private val getActorEnvironment: GetActorEnvironment,
     private val verifyJwtSignatureFromDid: VerifyJwtSignatureFromDid,
+    private val safeJson: SafeJson,
 ) : ValidateTokenStatusList {
     override suspend fun invoke(
         credentialIssuer: String,
         statusListJwt: String,
         subject: String,
     ): Result<TokenStatusListResponse, ValidateTokenStatusStatusListError> = coroutineBinding {
-        runSuspendCatching {
+        val jwt = runSuspendCatching {
             val jwt = Jwt(statusListJwt)
 
             check(jwt.type == SUPPORTED_STATUS_TYPE) { "Status list token is not of proper type" }
@@ -36,22 +43,42 @@ class ValidateTokenStatusListImpl @Inject constructor(
                 check(expirationTime.isAfter(Instant.now())) { "Status list token is expired" }
             }
 
-            val jwtIssuer: String = checkNotNull(jwt.iss) { "Issuer is missing" }
-            check(credentialIssuer == jwtIssuer) { "Issuers do not match" }
-
-            val keyId = checkNotNull(jwt.keyId) { "keyId is missing" }
-
-            verifyJwtSignatureFromDid(
-                did = jwtIssuer,
-                kid = keyId,
-                jwt = jwt,
-            ).mapError(VerifyJwtSignatureFromDidError::toValidateTokenStatusListError)
-                .bind()
-
-            parseResponse(jwt.payloadString).bind()
+            jwt
         }.mapError { throwable ->
             throwable.toValidateTokenStatusStatusListError("ValidateTokenStatusList error")
         }.bind()
+
+        val keyId = runSuspendCatching {
+            checkNotNull(jwt.keyId) { "keyId is missing" }
+        }.mapError { throwable ->
+            throwable.toValidateTokenStatusStatusListError("ValidateTokenStatusList error")
+        }.bind()
+
+        val did = didResolverHelper.getDidStringFromAbsoluteKeyId(keyId)
+            .mapError { throwable ->
+                throwable.toValidateTokenStatusStatusListError("ValidateTokenStatusList error")
+            }.bind()
+
+        val actorEnvironment = getActorEnvironment(did)
+        runSuspendCatching {
+            check(actorEnvironment != ActorEnvironment.EXTERNAL) { "actor is not in registries" }
+        }.mapError { throwable ->
+            Timber.e(t = throwable, message = "status list not in swiyu registry")
+            CredentialStatusError.UnknownRegistry
+        }.bind()
+        runSuspendCatching {
+            check(credentialIssuer == did) { "Issuers do not match" }
+        }.mapError { throwable ->
+            throwable.toValidateTokenStatusStatusListError("ValidateTokenStatusList error")
+        }.bind()
+
+        verifyJwtSignatureFromDid(
+            kid = keyId,
+            jwt = jwt,
+        ).mapError(VerifyJwtSignatureFromDidError::toValidateTokenStatusListError)
+            .bind()
+
+        parseResponse(jwt.payloadString).bind()
     }
 
     private fun parseResponse(payload: String) =

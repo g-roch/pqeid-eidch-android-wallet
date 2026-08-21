@@ -13,9 +13,11 @@ import ch.admin.foitt.openid4vc.domain.model.jwe.JWEError
 import ch.admin.foitt.openid4vc.domain.model.jwt.JwtError
 import ch.admin.foitt.openid4vc.domain.model.jwt.VerifyJwtSignatureFromDidError
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSdJwtError
+import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VerifyVcSdJwtBatchConsistencyError
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VerifyVcSdJwtSignatureError
 import ch.admin.foitt.openid4vc.utils.JsonError
 import ch.admin.foitt.openid4vc.utils.JsonParsingError
+import timber.log.Timber
 
 interface CredentialOfferError {
 
@@ -33,6 +35,7 @@ interface CredentialOfferError {
     data object UnsupportedCryptographicSuite :
         GetVerifiableCredentialParamsError,
         FetchVerifiableCredentialError,
+        CreateDPoPProofJwtError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
 
@@ -83,25 +86,43 @@ interface CredentialOfferError {
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError,
         FetchDeferredCredentialError
+
     data object InvalidGrant :
         FetchAccessTokenError,
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object InvalidClient :
         FetchAccessTokenError,
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object UnauthorizedClient :
         FetchAccessTokenError,
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object UnauthorizedGrantType :
+        FetchAccessTokenError,
+        FetchVerifiableCredentialError,
+        FetchDeferredCredentialError,
+        FetchVcSdJwtCredentialError,
+        FetchCredentialByConfigError
+
+    data class UseDPoPNonce(val nonce: String?) :
+        FetchAccessTokenError,
+        FetchVerifiableCredentialError,
+        FetchDeferredCredentialError,
+        FetchVcSdJwtCredentialError,
+        FetchCredentialByConfigError
+
+    data object InvalidDPoPProof :
         FetchAccessTokenError,
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
@@ -116,11 +137,13 @@ interface CredentialOfferError {
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object InvalidToken :
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object InsufficientScope :
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
@@ -133,31 +156,37 @@ interface CredentialOfferError {
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object UnknownCredentialConfiguration :
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object UnknownCredentialIdentifier :
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object InvalidProof :
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object InvalidNonce :
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object InvalidEncryptionParameters :
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
         FetchVcSdJwtCredentialError,
         FetchCredentialByConfigError
+
     data object CredentialRequestDenied :
         FetchVerifiableCredentialError,
         FetchDeferredCredentialError,
@@ -189,13 +218,15 @@ interface CredentialOfferError {
         FetchIssuerCredentialInfoError,
         FetchCredentialByConfigError,
         FetchVerifiableCredentialError,
+        CreateDPoPProofJwtError,
         FetchDeferredCredentialError,
         GetVerifiableCredentialParamsError,
         FetchIssuerConfigurationError,
         FetchNonceError,
         FetchVcSdJwtCredentialError,
         CreateCredentialRequestError,
-        FetchAccessTokenError
+        FetchAccessTokenError,
+        GetSignedMetadataDidError
 }
 
 sealed interface FetchIssuerCredentialInfoError
@@ -206,28 +237,21 @@ internal sealed interface FetchVcSdJwtCredentialError
 sealed interface FetchNonceError
 sealed interface FetchAccessTokenError
 sealed interface CreateCredentialRequestError
+sealed interface CreateDPoPProofJwtError
 sealed interface GetVerifiableCredentialParamsError
 sealed interface FetchVerifiableCredentialError
 sealed interface FetchDeferredCredentialError
+sealed interface GetSignedMetadataDidError
 
 internal fun FetchAccessTokenError.toFetchVerifiableCredentialError(): FetchVerifiableCredentialError = when (this) {
     is CredentialOfferError.InvalidClient -> this
     is CredentialOfferError.InvalidCredentialOffer -> this
+    is CredentialOfferError.InvalidDPoPProof -> this
     is CredentialOfferError.InvalidGrant -> this
     is CredentialOfferError.InvalidRequest -> this
     is CredentialOfferError.UnauthorizedClient -> this
     is CredentialOfferError.UnauthorizedGrantType -> this
-    is CredentialOfferError.NetworkInfoError -> this
-    is CredentialOfferError.Unexpected -> this
-}
-
-fun FetchAccessTokenError.toFetchDeferredCredentialError(): FetchDeferredCredentialError = when (this) {
-    is CredentialOfferError.InvalidClient -> this
-    is CredentialOfferError.InvalidCredentialOffer -> this
-    is CredentialOfferError.InvalidGrant -> this
-    is CredentialOfferError.InvalidRequest -> this
-    is CredentialOfferError.UnauthorizedClient -> this
-    is CredentialOfferError.UnauthorizedGrantType -> this
+    is CredentialOfferError.UseDPoPNonce -> this
     is CredentialOfferError.NetworkInfoError -> this
     is CredentialOfferError.Unexpected -> this
 }
@@ -253,6 +277,7 @@ internal fun FetchVcSdJwtCredentialError.toFetchCredentialByConfigError(): Fetch
     is CredentialOfferError.InvalidRequest -> this
     is CredentialOfferError.InvalidGrant -> this
     is CredentialOfferError.InvalidClient -> this
+    is CredentialOfferError.InvalidDPoPProof -> this
     is CredentialOfferError.InvalidCredentialRequest -> this
     is CredentialOfferError.UnknownCredentialConfiguration -> this
     is CredentialOfferError.UnknownCredentialIdentifier -> this
@@ -260,15 +285,22 @@ internal fun FetchVcSdJwtCredentialError.toFetchCredentialByConfigError(): Fetch
     is CredentialOfferError.InvalidNonce -> this
     is CredentialOfferError.InvalidEncryptionParameters -> this
     is CredentialOfferError.CredentialRequestDenied -> this
+    is CredentialOfferError.UseDPoPNonce -> this
 }
 
 internal fun VerifyVcSdJwtSignatureError.toFetchVcSdJwtCredentialError(): FetchVcSdJwtCredentialError = when (this) {
     is VcSdJwtError.InvalidJwt,
     is VcSdJwtError.InvalidVcSdJwt,
+    VcSdJwtError.InvalidDid,
     is VcSdJwtError.DidDocumentDeactivated -> CredentialOfferError.IntegrityCheckFailed
-    is VcSdJwtError.NetworkError -> CredentialOfferError.NetworkInfoError
+
+    is VcSdJwtError.NetworkError -> NetworkInfoError
     is VcSdJwtError.IssuerValidationFailed -> CredentialOfferError.UnknownIssuer
-    is VcSdJwtError.Unexpected -> CredentialOfferError.Unexpected(cause)
+    is VcSdJwtError.Unexpected -> Unexpected(cause)
+}
+
+internal fun VerifyVcSdJwtBatchConsistencyError.toFetchVcSdJwtCredentialError(): FetchVcSdJwtCredentialError = when (this) {
+    is VcSdJwtError.BatchConsistencyValidationFailed -> CredentialOfferError.IntegrityCheckFailed
 }
 
 @Suppress("CyclomaticComplexMethod")
@@ -290,6 +322,7 @@ internal fun FetchVerifiableCredentialError.toFetchVcSdJwtCredentialError(): Fet
     is CredentialOfferError.InsufficientScope -> this
     is CredentialOfferError.InvalidGrant -> this
     is CredentialOfferError.InvalidClient -> this
+    is CredentialOfferError.InvalidDPoPProof -> this
     is CredentialOfferError.InvalidCredentialRequest -> this
     is CredentialOfferError.UnknownCredentialConfiguration -> this
     is CredentialOfferError.UnknownCredentialIdentifier -> this
@@ -297,6 +330,7 @@ internal fun FetchVerifiableCredentialError.toFetchVcSdJwtCredentialError(): Fet
     is CredentialOfferError.InvalidNonce -> this
     is CredentialOfferError.InvalidEncryptionParameters -> this
     is CredentialOfferError.CredentialRequestDenied -> this
+    is CredentialOfferError.UseDPoPNonce -> this
 }
 
 internal fun FetchIssuerCredentialInfoError.toGetVerifiableCredentialParamsError(): GetVerifiableCredentialParamsError = when (this) {
@@ -312,7 +346,9 @@ internal fun JsonParsingError.toFetchIssuerCredentialInfoError(): FetchIssuerCre
 internal fun VerifyJwtSignatureFromDidError.toValidateIssuerMetadataJwtError(): ValidateIssuerMetadataJwtError = when (this) {
     JwtError.DidDocumentDeactivated,
     JwtError.IssuerValidationFailed,
+    JwtError.InvalidDid,
     is JwtError.InvalidJwt -> InvalidSignedMetadata("")
+
     JwtError.NetworkError -> NetworkInfoError
     is JwtError.Unexpected -> Unexpected(throwable)
 }
@@ -349,6 +385,16 @@ internal fun CreateJwkError.toFetchVerifiableCredentialError(): FetchVerifiableC
     is JwkError.Unexpected -> CredentialOfferError.Unexpected(cause)
 }
 
+internal fun CreateJwkError.toCreateDPoPProofJwtError(): CreateDPoPProofJwtError = when (this) {
+    is JwkError.UnsupportedCryptographicSuite -> CredentialOfferError.UnsupportedCryptographicSuite
+    is JwkError.Unexpected -> CredentialOfferError.Unexpected(cause)
+}
+
+fun CreateDPoPProofJwtError.toFetchVerifiableCredentialError(): FetchVerifiableCredentialError = when (this) {
+    is CredentialOfferError.UnsupportedCryptographicSuite -> this
+    is CredentialOfferError.Unexpected -> this
+}
+
 internal fun JsonParsingError.toCreateCredentialRequestError(): CreateCredentialRequestError = when (this) {
     is JsonError.Unexpected -> CredentialOfferError.Unexpected(this.throwable)
 }
@@ -359,12 +405,23 @@ internal fun CreateCredentialRequestError.toFetchVerifiableCredentialError(): Fe
 
 internal fun DecryptJWEError.toFetchVerifiableCredentialError(): FetchVerifiableCredentialError = when (this) {
     is JWEError.Unexpected -> CredentialOfferError.Unexpected(throwable)
+    is JWEError.PayloadSizeExceeded -> CredentialOfferError.Unexpected(
+        IllegalStateException("Decompressed JWE payload size limit exceeded")
+    )
 }
 
 internal fun DecryptJWEError.toFetchDeferredCredentialError(): FetchDeferredCredentialError = when (this) {
     is JWEError.Unexpected -> CredentialOfferError.Unexpected(throwable)
+    is JWEError.PayloadSizeExceeded -> CredentialOfferError.Unexpected(
+        IllegalStateException("Decompressed JWE payload size limit exceeded")
+    )
 }
 
 internal fun CreateJWEError.toCreateCredentialRequestError(): CreateCredentialRequestError = when (this) {
     is JWEError.Unexpected -> CredentialOfferError.Unexpected(throwable)
+}
+
+internal fun Throwable.toUnexpected(): Unexpected {
+    Timber.w(t = this)
+    return Unexpected(this)
 }

@@ -24,14 +24,15 @@ sealed interface Overlay {
     val captureBaseDigest: String
 }
 
-private object OverlaySerializer : JsonContentPolymorphicSerializer<Overlay>(
+internal object OverlaySerializer : JsonContentPolymorphicSerializer<Overlay>(
     Overlay::class
 ) {
+    @Suppress("CyclomaticComplexMethod")
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<Overlay> {
         return when (OverlaySpecType.getByType(element.jsonObject["type"]?.jsonPrimitive?.content)) {
-            OverlaySpecType.DATA_SOURCE_1_0 -> DataSourceOverlay1x0.serializer()
             OverlaySpecType.DATA_SOURCE_2_0 -> DataSourceOverlay2x0.serializer()
             OverlaySpecType.LABEL_1_0 -> LabelOverlay1x0.serializer()
+            OverlaySpecType.LABEL_1_1 -> LabelOverlay1x1.serializer()
             OverlaySpecType.BRANDING_1_1 -> BrandingOverlay1x1.serializer()
             OverlaySpecType.META_1_0 -> MetaOverlay1x0.serializer()
             OverlaySpecType.CHARACTER_ENCODING_1_0 -> CharacterEncodingOverlay1x0.serializer()

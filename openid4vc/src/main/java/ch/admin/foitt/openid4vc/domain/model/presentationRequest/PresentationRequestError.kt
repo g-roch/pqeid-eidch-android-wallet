@@ -2,9 +2,7 @@
 
 package ch.admin.foitt.openid4vc.domain.model.presentationRequest
 
-import ch.admin.foitt.openid4vc.domain.model.GetKeyPairError
-import ch.admin.foitt.openid4vc.domain.model.GetSoftwareKeyPairError
-import ch.admin.foitt.openid4vc.domain.model.KeyPairError
+import ch.admin.foitt.openid4vc.domain.model.GetKeyPairForKeyBindingError
 import ch.admin.foitt.openid4vc.domain.model.jwe.CreateJWEError
 import ch.admin.foitt.openid4vc.domain.model.jwe.JWEError
 import ch.admin.foitt.openid4vc.utils.JsonError
@@ -13,7 +11,8 @@ import timber.log.Timber
 
 interface PresentationRequestError {
     data object NetworkError : FetchPresentationRequestError, SubmitAnyCredentialPresentationError, SubmitPresentationErrorError
-    data object ValidationError : SubmitAnyCredentialPresentationError
+    data object SocketTimeoutError : SubmitAnyCredentialPresentationError
+    data class ValidationError(val error: String?, val description: String?) : SubmitAnyCredentialPresentationError
     data object VerificationError : SubmitAnyCredentialPresentationError
     data object InvalidCredentialError : SubmitAnyCredentialPresentationError
     data object InvalidKeyPairError : CreateVcSdJwtVerifiablePresentationError
@@ -44,18 +43,11 @@ internal fun CreateVcSdJwtVerifiablePresentationError.toCreateAnyVerifiablePrese
         is PresentationRequestError.Unexpected -> this
     }
 
-internal fun GetKeyPairError.toCreateVcSdJwtVerifiablePresentationError(): CreateVcSdJwtVerifiablePresentationError = when (this) {
-    is KeyPairError.Unexpected -> PresentationRequestError.Unexpected(throwable)
-    KeyPairError.NotFound -> PresentationRequestError.Unexpected(null)
-}
-
-internal fun GetSoftwareKeyPairError.toCreateVcSdJwtVerifiablePresentationError(): CreateVcSdJwtVerifiablePresentationError = when (this) {
-    is KeyPairError.Unexpected -> PresentationRequestError.Unexpected(throwable)
-}
-
-internal fun CreateAnyVerifiablePresentationError.toSubmitAnyCredentialPresentationError(): SubmitAnyCredentialPresentationError =
+internal fun GetKeyPairForKeyBindingError.toCreateVcSdJwtVerifiablePresentationError(): CreateVcSdJwtVerifiablePresentationError =
     when (this) {
-        is PresentationRequestError.Unexpected -> this
+        GetKeyPairForKeyBindingError.SoftwareKeyNotFound -> PresentationRequestError.InvalidKeyPairError
+        GetKeyPairForKeyBindingError.HardwareKeyNotFound -> PresentationRequestError.Unexpected(null)
+        is GetKeyPairForKeyBindingError.Unexpected -> PresentationRequestError.Unexpected(throwable)
     }
 
 internal fun Throwable.toSubmitAnyCredentialPresentationError(message: String): SubmitAnyCredentialPresentationError {
@@ -80,10 +72,14 @@ internal fun CreateJWEError.toGetPresentationRequestConfigError(): GetAuthorizat
     is JWEError.Unexpected -> PresentationRequestError.Unexpected(throwable)
 }
 
-internal fun GetAuthorizationResponseConfigError.toSubmitAnyCredentialPresentationError(): SubmitAnyCredentialPresentationError =
+internal fun CreateAnyVerifiablePresentationError.toGetAuthorizationResponseConfigError(): GetAuthorizationResponseConfigError =
     when (this) {
         is PresentationRequestError.Unexpected -> this
     }
+
+internal fun JsonParsingError.toSubmitAnyCredentialPresentationError(): SubmitAnyCredentialPresentationError = when (this) {
+    is JsonError.Unexpected -> PresentationRequestError.Unexpected(this.throwable)
+}
 
 internal fun Throwable.toFetchPresentationRequestError(message: String): FetchPresentationRequestError {
     Timber.e(t = this, message = message)

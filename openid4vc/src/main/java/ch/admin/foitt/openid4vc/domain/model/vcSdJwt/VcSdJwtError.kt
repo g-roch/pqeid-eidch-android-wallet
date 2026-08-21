@@ -6,6 +6,11 @@ import ch.admin.foitt.openid4vc.domain.model.jwt.VerifyJwtSignatureError
 import ch.admin.foitt.openid4vc.domain.model.jwt.VerifyJwtSignatureFromDidError
 
 interface VcSdJwtError {
+    data object InvalidDid :
+        VerifyRequestObjectSignatureError,
+        VerifyJwtError,
+        VerifyVcSdJwtSignatureError,
+        ResolvePublicKeyError
     data object IssuerValidationFailed :
         VerifyRequestObjectSignatureError,
         VerifyJwtError,
@@ -34,6 +39,8 @@ interface VcSdJwtError {
 
     data class InvalidVcSdJwt(val cause: Throwable) : VerifyVcSdJwtSignatureError
 
+    data object BatchConsistencyValidationFailed : VerifyVcSdJwtBatchConsistencyError
+
     data class Unexpected(val cause: Throwable?) :
         VerifyRequestObjectSignatureError,
         VerifyJwtError,
@@ -44,13 +51,8 @@ interface VcSdJwtError {
 sealed interface VerifyRequestObjectSignatureError
 sealed interface VerifyJwtError
 sealed interface VerifyVcSdJwtSignatureError
+sealed interface VerifyVcSdJwtBatchConsistencyError
 sealed interface ResolvePublicKeyError
-
-internal fun ResolveDidError.toVerifyRequestObjectSignatureError(): VerifyRequestObjectSignatureError = when (this) {
-    is ResolveDidError.ValidationFailure -> VcSdJwtError.IssuerValidationFailed
-    is ResolveDidError.NetworkError -> VcSdJwtError.NetworkError
-    is ResolveDidError.Unexpected -> VcSdJwtError.Unexpected(cause)
-}
 
 internal fun VerifyJwtSignatureError.toVerifyRequestObjectSignatureError(): VerifyRequestObjectSignatureError = when (this) {
     is JwtError.InvalidJwt -> VcSdJwtError.InvalidJwt
@@ -58,6 +60,7 @@ internal fun VerifyJwtSignatureError.toVerifyRequestObjectSignatureError(): Veri
 }
 
 internal fun VerifyJwtSignatureFromDidError.toVerifyRequestObjectSignatureError(): VerifyRequestObjectSignatureError = when (this) {
+    is JwtError.InvalidDid -> VcSdJwtError.InvalidDid
     is JwtError.InvalidJwt -> VcSdJwtError.InvalidJwt
     is JwtError.IssuerValidationFailed -> VcSdJwtError.IssuerValidationFailed
     is JwtError.DidDocumentDeactivated -> VcSdJwtError.DidDocumentDeactivated
@@ -75,6 +78,7 @@ internal fun Throwable.toVerifyVcSdJwtSignatureError(): VerifyVcSdJwtSignatureEr
     VcSdJwtError.InvalidVcSdJwt(this)
 
 internal fun VerifyJwtSignatureFromDidError.toVerifyVcSdJwtSignatureError(): VerifyVcSdJwtSignatureError = when (this) {
+    is JwtError.InvalidDid -> VcSdJwtError.InvalidDid
     is JwtError.InvalidJwt -> VcSdJwtError.InvalidJwt
     is JwtError.IssuerValidationFailed -> VcSdJwtError.IssuerValidationFailed
     is JwtError.DidDocumentDeactivated -> VcSdJwtError.DidDocumentDeactivated

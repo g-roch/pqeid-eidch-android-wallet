@@ -1,7 +1,6 @@
 package ch.admin.foitt.wallet.platform.credentialStatus.domain.usecase.implementation
 
 import ch.admin.foitt.openid4vc.domain.model.anycredential.AnyCredential
-import ch.admin.foitt.openid4vc.domain.model.anycredential.Validity
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialFormat
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSdJwtCredential
 import ch.admin.foitt.wallet.platform.credential.domain.model.GetAllAnyCredentialsByCredentialIdError
@@ -15,9 +14,7 @@ import ch.admin.foitt.wallet.platform.credentialStatus.domain.usecase.UpdateCred
 import ch.admin.foitt.wallet.platform.database.domain.model.CredentialStatus
 import ch.admin.foitt.wallet.platform.di.IoDispatcher
 import ch.admin.foitt.wallet.platform.ssi.domain.model.BundleItemRepositoryError
-import ch.admin.foitt.wallet.platform.ssi.domain.model.VerifiableCredentialRepositoryError
 import ch.admin.foitt.wallet.platform.ssi.domain.repository.BundleItemRepository
-import ch.admin.foitt.wallet.platform.ssi.domain.repository.VerifiableCredentialRepository
 import ch.admin.foitt.wallet.platform.utils.SafeJson
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.coroutines.coroutineBinding
@@ -31,7 +28,6 @@ import javax.inject.Inject
 
 class UpdateCredentialStatusImpl @Inject constructor(
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
-    private val verifiableCredentialRepository: VerifiableCredentialRepository,
     private val bundleItemRepository: BundleItemRepository,
     private val getAllAnyCredentialsByCredentialId: GetAllAnyCredentialsByCredentialId,
     private val fetchCredentialStatus: FetchCredentialStatus,
@@ -44,12 +40,7 @@ class UpdateCredentialStatusImpl @Inject constructor(
                 .mapError(GetAllAnyCredentialsByCredentialIdError::toUpdateCredentialStatusError)
                 .bind()
             anyCredentials.forEach { anyCredential ->
-                if (anyCredential.validity == Validity.Valid) {
-                    checkStatusList(credentialId, anyCredential).bind()
-                } else {
-                    // No point in getting the status, local validity has precedence for now.
-                    Timber.d("Try to update status of invalid credential with id: ${anyCredential.id}")
-                }
+                checkStatusList(credentialId, anyCredential).bind()
             }
         }
     }
@@ -82,16 +73,13 @@ class UpdateCredentialStatusImpl @Inject constructor(
         credentialId: Long,
         newStatus: CredentialStatus
     ): Result<Int, UpdateCredentialStatusError> = coroutineBinding {
-        verifiableCredentialRepository.onBundleItemUpdate(credentialId)
-            .mapError(VerifiableCredentialRepositoryError::toUpdateCredentialStatusError)
-            .bind()
         bundleItemRepository.updateStatusByCredentialId(credentialId, newStatus)
             .mapError(BundleItemRepositoryError::toUpdateCredentialStatusError)
             .bind()
     }
 
     private fun AnyCredential.parseStatusProperties() = when (this.format) {
-        CredentialFormat.VC_SD_JWT -> {
+        CredentialFormat.DC_SD_JWT, CredentialFormat.VC_SD_JWT -> {
             (this as VcSdJwtCredential).status?.let {
                 safeJson.safeDecodeElementTo<CredentialStatusProperties>(it).get()
             }
