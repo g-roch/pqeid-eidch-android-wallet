@@ -9,7 +9,7 @@ data class ClientAttestation(
 ) {
     companion object {
         const val KEY_ALIAS = "clientAttestation"
-        val SIGNING_ALGORITHM = SigningAlgorithm.ES256
+        val SIGNING_ALGORITHM = SigningAlgorithm.ML_DSA_65
         const val TYPE_PROOF_OF_POSSESSION = "oauth-client-attestation-pop+jwt"
         const val REQUEST_HEADER = "OAuth-Client-Attestation"
     }

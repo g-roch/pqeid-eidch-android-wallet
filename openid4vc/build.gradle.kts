@@ -29,6 +29,7 @@ dependencies {
     implementation(libs.nimbus.jose.jwt)
     // Required at runtime by Nimbus' Ed25519Verifier (EdDSA signature verification)
     implementation(libs.tink.android)
+    implementation(libs.bouncycastle.bcprov)
 
     // DID resolver
     implementation(libs.didresolver)

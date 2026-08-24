@@ -64,6 +64,7 @@ timber = "5.0.1"
 tink-android = "1.23.0"
 ui-automator = "2.3.0"
 zxing-cpp = "3.0.2"
+bouncycastle = "1.85"
 
 [libraries]
 # Core Navigation 3 libraries
@@ -176,6 +177,8 @@ androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref =
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher-android" }
 kover-gradle-plugin = { group = "org.jetbrains.kotlinx", name = "kover-gradle-plugin", version.ref = "kover" }
+
+bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 
 [bundles]
 androidx-camera = [

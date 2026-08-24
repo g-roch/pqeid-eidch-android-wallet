@@ -1,7 +1,6 @@
 package ch.admin.foitt.openid4vc.domain.model
 
 import com.nimbusds.jose.JWSAlgorithm
-import com.nimbusds.jose.jwk.Curve
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -13,11 +12,8 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 enum class SigningAlgorithm(override val stdName: String) : Algorithm {
-    @SerialName("ES512")
-    ES512("ES512"),
-
-    @SerialName("ES256")
-    ES256("ES256"),
+    @SerialName("ML-DSA-65")
+    ML_DSA_65("ML-DSA-65"),
     ;
 
     companion object {
@@ -25,12 +21,14 @@ enum class SigningAlgorithm(override val stdName: String) : Algorithm {
     }
 }
 
+// Nimbus 10.9.1 has no built-in JWSAlgorithm constant for ML-DSA-65 (draft-ietf-cose-dilithium
+// is still on its roadmap as of Aug 2026), so this constructs the header value manually and
+// relies on a custom JWSSigner/JWSVerifier pair (see MLDsaJWSSigner / MLDsaJWSVerifier) to
+// actually sign/verify it.
 fun SigningAlgorithm.toJWSAlgorithm(): JWSAlgorithm = when (this) {
-    SigningAlgorithm.ES256 -> JWSAlgorithm.ES256
-    SigningAlgorithm.ES512 -> JWSAlgorithm.ES512
+    SigningAlgorithm.ML_DSA_65 -> JWSAlgorithm("ML-DSA-65")
 }
 
-fun SigningAlgorithm.toCurve(): Curve = when (this) {
-    SigningAlgorithm.ES256 -> Curve.P_256
-    SigningAlgorithm.ES512 -> Curve.P_521
-}
+// ML-DSA has no elliptic-curve parameter, so toCurve() is gone. Any caller that used
+// signingAlgorithm.toCurve() (search the old CreateKeyGenSpecImpl) needs to be updated —
+// see the AndroidKeyStore diff below.

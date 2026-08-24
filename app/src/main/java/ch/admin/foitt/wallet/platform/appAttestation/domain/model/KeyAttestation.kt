@@ -10,6 +10,6 @@ data class KeyAttestation(
 ) {
     companion object {
         const val KEY_ALIAS = "keyAttestation"
-        val signingAlgorithm = SigningAlgorithm.ES256
+        val signingAlgorithm = SigningAlgorithm.ML_DSA_65
     }
 }

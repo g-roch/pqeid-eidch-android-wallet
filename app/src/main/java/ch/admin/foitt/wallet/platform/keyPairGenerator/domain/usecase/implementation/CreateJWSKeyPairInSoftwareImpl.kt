@@ -29,6 +29,15 @@ internal class CreateJWSKeyPairInSoftwareImpl @Inject constructor() : CreateJWSK
         KeyPairError.Unexpected(throwable)
     }
 
+    // NOT CHANGED — deliberately left on EC/secp256r1. Android 17's ML-DSA-65 support was
+    // shipped as a AndroidKeyStore/KeyMint HAL feature (TEE/StrongBox-backed), not as an
+    // addition to the default software JCA provider (Conscrypt). "ML-DSA-65" via
+    // KeyPairGenerator.getInstance("ML-DSA-65") with no provider argument, or with the default
+    // provider, throws NoSuchAlgorithmException on current devices. This use case is only ever
+    // called for payload-encryption keys (ephemeral, ECDH-based — see CreatePayloadEncryptionKeyPairImpl),
+    // which is a different primitive from ML-DSA signing anyway, so there is no in-place swap
+    // here regardless of platform support. If a software-only ML-DSA-65 signing path is ever
+    // needed, it requires bundling BouncyCastle's PQC provider explicitly.
     private fun createKeyPairInSoftware(): KeyPair {
         val generator = KeyPairGenerator.getInstance("EC")
         val spec = ECGenParameterSpec("secp256r1")

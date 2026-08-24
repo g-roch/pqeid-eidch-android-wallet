@@ -1,9 +1,9 @@
 package ch.admin.foitt.wallet.platform.appAttestation.domain.usecase.implementation
 
 import ch.admin.foitt.openid4vc.domain.model.GetKeyPairError
-import ch.admin.foitt.openid4vc.domain.model.toCurve
 import ch.admin.foitt.openid4vc.domain.model.toJWSAlgorithm
 import ch.admin.foitt.openid4vc.domain.usecase.GetHardwareKeyPair
+import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.MLDsaJWSSigner
 import ch.admin.foitt.openid4vc.utils.Constants
 import ch.admin.foitt.wallet.platform.appAttestation.domain.model.ClientAttestation
 import ch.admin.foitt.wallet.platform.appAttestation.domain.model.ClientAttestationPoP
@@ -16,7 +16,6 @@ import com.github.michaelbull.result.coroutines.runSuspendCatching
 import com.github.michaelbull.result.mapError
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSHeader
-import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import kotlinx.serialization.json.JsonElement
@@ -68,7 +67,7 @@ internal class GenerateProofOfPossessionImpl @Inject constructor(
             .mapError(GetKeyPairError::toGenerateProofOfPossessionError).bind()
 
         runSuspendCatching {
-            val signer = ECDSASigner(keyPair.private, ClientAttestation.SIGNING_ALGORITHM.toCurve())
+            val signer = MLDsaJWSSigner(keyPair.private)
             signedJwt.sign(signer)
         }.mapError { throwable ->
             throwable.toGenerateProofOfPossessionError("Failed to sign proof of possession jwt")

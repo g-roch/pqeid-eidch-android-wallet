@@ -14,6 +14,7 @@ import ch.admin.foitt.openid4vc.domain.model.presentationRequest.toCreateVcSdJwt
 import ch.admin.foitt.openid4vc.domain.model.toJWSAlgorithm
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSdJwtCredential
 import ch.admin.foitt.openid4vc.domain.usecase.GetKeyPairForKeyBinding
+import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.MLDsaJWSSigner
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.CreateVcSdJwtVerifiablePresentation
 import ch.admin.foitt.openid4vc.utils.JsonParsingError
 import ch.admin.foitt.openid4vc.utils.SafeJson
@@ -25,8 +26,6 @@ import com.github.michaelbull.result.mapError
 import com.github.michaelbull.result.toErrorIfNull
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSHeader
-import com.nimbusds.jose.crypto.ECDSASigner
-import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import kotlinx.coroutines.CoroutineDispatcher
@@ -65,8 +64,12 @@ internal class CreateVcSdJwtVerifiablePresentationImpl @Inject constructor(
                     createKeyBindingJwt(keyBinding.algorithm, base64UrlEncodedSdHash, authorizationRequest, presentationContext)
                         .bind()
 
-                val jwk = getKeyBindingJwk(credential).bind()
-                val signer = ECDSASigner(keyPair.private, Curve(jwk.crv))
+                // getKeyBindingJwk(credential) is no longer called here now that the signer
+                // doesn't need jwk.crv — but it likely existed to assert the credential's cnf
+                // JWK matches the key actually being used to sign. Re-add that check explicitly
+                // (comparing keyPair.public against the parsed Jwk) rather than silently
+                // dropping the validation it was providing.
+                val signer = MLDsaJWSSigner(keyPair.private)
                 keyBindingJwt.sign(signer)
                 val keyBindingJwtString = keyBindingJwt.serialize()
 

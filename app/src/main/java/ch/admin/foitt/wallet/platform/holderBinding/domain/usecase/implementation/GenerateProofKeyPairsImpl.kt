@@ -62,7 +62,7 @@ class GenerateProofKeyPairsImpl @Inject constructor(
     }
 
     // priority list of preferred signing algorithms (first position = highest priority)
-    private fun getPreferredSigningAlgorithms() = listOf(SigningAlgorithm.ES256)
+    private fun getPreferredSigningAlgorithms() = listOf(SigningAlgorithm.ML_DSA_65)
 
     private suspend fun createSoftwareKeyPair(
         signingAlgorithm: SigningAlgorithm

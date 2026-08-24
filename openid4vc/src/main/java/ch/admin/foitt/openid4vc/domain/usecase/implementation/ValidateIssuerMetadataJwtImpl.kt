@@ -52,6 +52,8 @@ internal class ValidateIssuerMetadataJwtImpl @Inject constructor(
     }
 
     private companion object {
-        private val supportedAlgorithms = setOf(SignatureAlgorithm.ES256, SignatureAlgorithm.EdDSA)
+        // Same ecosystem-interop caveat as ValidateTrustStatementImpl — this now only accepts
+        // issuer metadata signed with ML-DSA-65.
+        private val supportedAlgorithms = setOf(SignatureAlgorithm.ML_DSA_65)
     }
 }
