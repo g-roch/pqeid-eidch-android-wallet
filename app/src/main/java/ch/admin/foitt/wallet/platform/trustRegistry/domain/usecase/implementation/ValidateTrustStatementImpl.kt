@@ -94,9 +94,9 @@ internal class ValidateTrustStatementImpl @Inject constructor(
 
     companion object {
         const val VCSDJWT_TYPE_VALUE = "vc+sd-jwt"
-        // Restricting this to ML-DSA-65 means trust statements from the swiyu trust
+        // Restricting this to ML-DSA means trust statements from the swiyu trust
         // infrastructure will only validate once its signer has actually switched from
         // ES256/EdDSA — until then this rejects every real trust statement it sees.
-        private val supportedAlgorithms = setOf(SignatureAlgorithm.ML_DSA_65)
+        private val supportedAlgorithms = setOf(SignatureAlgorithm.ML_DSA_44)
     }
 }

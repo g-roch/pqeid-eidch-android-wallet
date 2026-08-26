@@ -10,7 +10,7 @@ import ch.admin.foitt.openid4vc.domain.model.keyBinding.BindingKeyPair
 import ch.admin.foitt.openid4vc.domain.model.toJWSAlgorithm
 import ch.admin.foitt.openid4vc.domain.usecase.CreateCredentialRequestProofsJwt
 import ch.admin.foitt.openid4vc.domain.usecase.CreateJwk
-import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.MLDsaJWSSigner
+import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.toJWSSigner
 import ch.admin.foitt.openid4vc.utils.Constants
 import com.github.michaelbull.result.coroutines.coroutineBinding
 import com.github.michaelbull.result.coroutines.runSuspendCatching
@@ -81,7 +81,7 @@ internal class CreateCredentialRequestProofsJwtImpl @Inject constructor(
         keyPair: JWSKeyPair
     ) = runSuspendCatching {
         val jwt = SignedJWT(header, payload)
-        val signer = MLDsaJWSSigner(keyPair.keyPair.private)
+        val signer = keyPair.algorithm.toJWSSigner(keyPair.keyPair.private)
         jwt.sign(signer)
         jwt.serialize()
     }.mapError { throwable ->

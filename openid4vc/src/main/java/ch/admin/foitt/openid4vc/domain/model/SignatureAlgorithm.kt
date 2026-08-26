@@ -12,19 +12,27 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 enum class SignatureAlgorithm(override val stdName: String) : Algorithm {
-    @SerialName("ML-DSA-65")
-    ML_DSA_65("ML-DSA-65"),
+    @SerialName("ES512")
+    ES512("ES512"),
+
+    @SerialName("ES256")
+    ES256("ES256"),
+
+    @SerialName("EdDSA")
+    EdDSA("EdDSA"),
+
+    @SerialName("ML-DSA-44")
+    ML_DSA_44("ML-DSA-44"),
     ;
 
     companion object {
-        fun fromStdName(name: String): SignatureAlgorithm? = entries.firstOrNull { it.stdName == name }
+        fun fromStdName(name: String): SignatureAlgorithm? = when (name) {
+            "Ed25519" -> EdDSA
+            else -> entries.firstOrNull { it.stdName == name }
+        }
 
         fun fromStdNameOrThrow(name: String): SignatureAlgorithm = checkNotNull(fromStdName(name)) {
             "unsupported algorithm: $name"
         }
     }
 }
-// NOTE: this only lets the wallet accept ML-DSA-65-signed JWTs — it does not make issuers or
-// verifiers in the swiyu trust infrastructure send them. Until they do, every real-world
-// credential offer / presentation request will fail fromStdNameOrThrow(). Keep ES256/ES512/EdDSA
-// entries alongside this one until the ecosystem side has actually migrated.

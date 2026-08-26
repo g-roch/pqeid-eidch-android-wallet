@@ -5,6 +5,7 @@ import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.util.Base64URL
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /**
  * https://datatracker.ietf.org/doc/html/rfc7517
@@ -12,13 +13,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class Jwk(
     @SerialName("x")
-    val x: String,
+    val x: String? = null,
     @SerialName("y")
     val y: String? = null,
-    // ML-DSA keys have no elliptic-curve parameter, so crv is EC-only now. Making it nullable
-    // rather than removing it keeps this a single Jwk type instead of a sealed hierarchy — a
-    // sealed EcJwk/MLDsaJwk split would be cleaner but touches every call site that pattern-
-    // matches on Jwk, which is out of scope here.
     @SerialName("crv")
     val crv: String? = null,
     @SerialName("kty")
@@ -31,6 +28,8 @@ data class Jwk(
     val use: String? = null,
     @SerialName("alg")
     val alg: String? = null,
+    @SerialName("pub")
+    val pubKey: String? = null,
 ) {
     companion object {
         fun fromEcKey(
@@ -38,6 +37,12 @@ data class Jwk(
             certificateChainBase64: List<String>?,
         ) = runSuspendCatching {
             ECKey.parse(ecKeyString).toEcJwk(certificateChainBase64)
+        }
+        fun fromJwkString(
+            jwkString: String,
+            certificateChainBase64: List<String>?,
+        ) = runSuspendCatching {
+            Json.decodeFromString<Jwk>(jwkString).copy(x5c = certificateChainBase64)
         }
     }
 }
@@ -51,23 +56,17 @@ fun ECKey.toEcJwk(certificateChainBase64: List<String>?): Jwk = Jwk(
     x5c = certificateChainBase64,
 )
 
-// "AKP" (Algorithm Key Pair) and a single opaque "x" holding the raw public key encoding is
-// this codebase's placeholder for ML-DSA JWKs — draft-ietf-cose-dilithium / the corresponding
-// JOSE key-type registration were not finalized as of this codebase's last update. Confirm the
-// actual field names/kty value the issuer/verifier side uses before relying on this in
-// production; this is the one place that needs to change if they differ.
 fun mlDsaPublicKeyToJwk(
     rawPublicKey: ByteArray,
     kid: String?,
     certificateChainBase64: List<String>?,
+    alg: String = "ML-DSA-44",
 ): Jwk = Jwk(
-    x = Base64URL.encode(rawPublicKey).toString(),
-    y = null,
-    crv = null,
     kty = "AKP",
     kid = kid,
     x5c = certificateChainBase64,
-    alg = "ML-DSA-65",
+    alg = alg,
+    pubKey = Base64URL.encode(rawPublicKey).toString(),
 )
 
 fun Jwk.hasSameCurveAs(otherJwk: Jwk): Boolean =

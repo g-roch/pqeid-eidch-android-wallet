@@ -110,7 +110,7 @@ class ValidatePresentationRequestImpl @Inject constructor(
         verificationProcessType: VerificationProcessType,
         responseUri: String?,
     ): Result<Unit, ValidatePresentationRequestError> = runSuspendCatching {
-        check(jwt.algorithm == SignatureAlgorithm.ML_DSA_65.stdName)
+        check(SignatureAlgorithm.fromStdName(jwt.algorithm) in setOf(SignatureAlgorithm.ES256, SignatureAlgorithm.ML_DSA_44))
         if (verificationProcessType == VerificationProcessType.NETWORK) {
             checkNotNull(jwt.keyId) { "keyId is missing" }
         }

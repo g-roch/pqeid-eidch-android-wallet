@@ -26,7 +26,7 @@ class GenerateDPoPKeyPairImpl @Inject constructor(
     ): Result<BindingKeyPair?, GenerateDPoPKeyPairError> = coroutineBinding {
         val supportedAlgorithms = verifiableCredentialParams.dpopSigningAlgValuesSupported
         val isHardwareBound = verifiableCredentialParams.proofTypeConfig?.keyAttestationsRequired != null
-        val algorithm = supportedAlgorithms?.firstOrNull { it == SigningAlgorithm.ML_DSA_65 } ?: return@coroutineBinding null
+        val algorithm = supportedAlgorithms?.firstOrNull { it == SigningAlgorithm.ML_DSA_44 } ?: return@coroutineBinding null
 
         if (isHardwareBound) {
             val keyAttestation = requestKeyAttestation(

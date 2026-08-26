@@ -11,16 +11,7 @@ import java.security.PrivateKey
 import java.security.Signature
 
 /**
- * Nimbus [JWSSigner] for ML-DSA-65, backed by a [PrivateKey] obtained from `AndroidKeyStore`
- * (or, in principle, any JCA provider that registers a "ML-DSA-65" [Signature] algorithm).
- *
- * Nimbus JOSE+JWT 10.9.1 has no built-in ML-DSA support — draft-ietf-cose-dilithium is still on
- * its roadmap as of Aug 2026 — so this bridges Nimbus's pluggable signer interface to the
- * platform `java.security.Signature` API added by Android 17's AndroidKeyStore.
- *
- * When [privateKey] is an AndroidKeyStore key, the private key material never leaves secure
- * hardware: `Signature.sign()` on a Keystore-backed key delegates to the TEE/StrongBox, exactly
- * like the existing SHA256withECDSA usage elsewhere in this codebase.
+ * A [JWSSigner] implementation for the ML-DSA-44 signature algorithm.
  */
 class MLDsaJWSSigner(private val privateKey: PrivateKey) : JWSSigner {
 
@@ -42,7 +33,7 @@ class MLDsaJWSSigner(private val privateKey: PrivateKey) : JWSSigner {
     }
 
     companion object {
-        private const val JCA_ALGORITHM = "ML-DSA-65"
+        private const val JCA_ALGORITHM = "ML-DSA-44"
         val SUPPORTED_ALGORITHMS: Set<JWSAlgorithm> = setOf(JWSAlgorithm(JCA_ALGORITHM))
     }
 }

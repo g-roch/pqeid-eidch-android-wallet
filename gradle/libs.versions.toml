@@ -24,7 +24,8 @@ core-splashscreen = "1.2.0"
 desugar-jdk-libs = "2.1.5"
 detekt = "1.23.8"
 devtools-ksp = "2.3.4"
-didresolver = "2.8.3"
+#didresolver = "2.8.3"
+didresolver = "2.8.3-pqeid-local-1"
 dynatrace = "8.339.1.1004"
 espresso-core = "3.7.0"
 espresso-intents = "3.7.0"
@@ -128,6 +129,7 @@ ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
 lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottie-compose" }
+bouncycastle-provider = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
 nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbus-jose-jwt" }

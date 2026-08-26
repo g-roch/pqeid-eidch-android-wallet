@@ -13,19 +13,14 @@ import java.security.PublicKey
 import java.security.Signature
 
 /**
- * Nimbus [JWSVerifier] for ML-DSA-65 public keys.
- *
- * Unlike [MLDsaJWSSigner], this deliberately does NOT go through `AndroidKeyStore`: verification
- * only ever touches a *public* key received from a third party (issuer/verifier), so there's no
- * hardware-backing benefit to gate this behind, and — per Android 17's initial documentation —
- * KeyFactory/Signature for "ML-DSA-65" are exposed through the AndroidKeyStore provider for keys
- * generated in that store, not confirmed as a general-purpose import path for arbitrary raw
- * public key bytes from a JWK. BouncyCastle's software ML-DSA implementation is used here
- * instead, which is the same trust model Nimbus already uses for its own signature verifiers.
- *
- * Requires `org.bouncycastle:bcprov-jdk18on` (or `bc-fips`) on the classpath, with
- * `BouncyCastleProvider` registered once at process start.
- */
+* A [JWSVerifier] implementation for the ML-DSA-44 signature algorithm.
+*
+* This verifier uses the Bouncy Castle provider to verify signatures generated
+* with the ML-DSA-44 algorithm. It supports the corresponding JWS algorithm
+* defined in [MLDsaJWSSigner].
+*
+* @property publicKey The public key used for signature verification.
+*/
 class MLDsaJWSVerifier(private val publicKey: PublicKey) : JWSVerifier {
 
     private val jcaContext = JCAContext()
@@ -35,7 +30,7 @@ class MLDsaJWSVerifier(private val publicKey: PublicKey) : JWSVerifier {
 
     override fun verify(header: JWSHeader, signingInput: ByteArray, signature: Base64URL): Boolean {
         if (header.algorithm !in supportedJWSAlgorithms()) return false
-        return Signature.getInstance("ML-DSA-65", BouncyCastleProvider.PROVIDER_NAME).apply {
+        return Signature.getInstance("ML-DSA-44", BouncyCastleProvider.PROVIDER_NAME).apply {
             initVerify(publicKey)
             update(signingInput)
         }.verify(signature.decode())
@@ -43,14 +38,13 @@ class MLDsaJWSVerifier(private val publicKey: PublicKey) : JWSVerifier {
 
     companion object {
         /**
-         * Builds an ML-DSA-65 [PublicKey] from raw key bytes (e.g. the decoded "x" value of a
-         * JWK). The final JOSE "kty"/"crv" naming for ML-DSA JWKs isn't settled yet
-         * (draft-ietf-jose-pqc-kem / draft-ietf-cose-dilithium are still in progress) — confirm
-         * the actual field names against whatever the issuing party sends before wiring this
-         * into VerifyJwtSignatureImpl.
+         * Converts raw ML-DSA public key bytes to a [PublicKey] instance.
+         *
+         * @param rawKey The raw public key bytes.
+         * @return The corresponding [PublicKey] instance.
          */
         fun publicKeyFromRawBytes(rawKey: ByteArray): PublicKey =
             KeyFactory.getInstance("ML-DSA", BouncyCastleProvider.PROVIDER_NAME)
-                .generatePublic(MLDSAPublicKeySpec(MLDSAParameterSpec.ml_dsa_65, rawKey))
+                .generatePublic(MLDSAPublicKeySpec(MLDSAParameterSpec.ml_dsa_44, rawKey))
     }
 }

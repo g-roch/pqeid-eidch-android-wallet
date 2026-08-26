@@ -3,6 +3,7 @@ package ch.admin.foitt.wallet.platform.keyPairGenerator.domain.usecase.implement
 import android.content.Context
 import android.content.pm.PackageManager
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import ch.admin.foitt.openid4vc.di.DefaultDispatcher
 import ch.admin.foitt.openid4vc.domain.model.KeyStorageSecurityLevel
@@ -122,10 +123,6 @@ internal class CreateJWSKeyPairInHardwareImpl @Inject constructor(
         keyPair
     }
 
-    // ML-DSA is not part of StrongBox's currently documented algorithm set, so a device can
-    // report FEATURE_STRONGBOX_KEYSTORE (true for EC/RSA/AES) while still rejecting an
-    // ML-DSA-65 key request. Fall back to the TEE-backed (non-StrongBox) key rather than fail
-    // key generation outright — this degrades the security level, so it's logged.
     private fun useStrongBox(keyStorageSecurityLevels: List<KeyStorageSecurityLevel>?): Result<Boolean, CreateJWSKeyPairError> = binding {
         if (keyStorageSecurityLevels.isNullOrEmpty()) {
             return@binding isStrongBoxAvailable()
@@ -179,11 +176,9 @@ internal class CreateJWSKeyPairInHardwareImpl @Inject constructor(
         }
     }
 
-    // "ML-DSA-65" is both the JCA algorithm name and the KeyPairGenerator.getInstance() argument
-    // on Android 17+ — there is no separate KeyProperties.KEY_ALGORITHM_ML_DSA_65 constant to
-    // reference yet, so this uses the literal the platform docs specify.
     private fun SigningAlgorithm.toKeyAlgorithm() = when (this) {
-        SigningAlgorithm.ML_DSA_65 -> "ML-DSA-65"
+        SigningAlgorithm.ML_DSA_44 -> "ML-DSA-44"
+        SigningAlgorithm.ES256 -> KeyProperties.KEY_ALGORITHM_EC
     }
 
     companion object {

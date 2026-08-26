@@ -23,7 +23,7 @@ class CreatePayloadEncryptionKeyPairImpl @Inject constructor(
         // hardcodes secp256r1 regardless of the SigningAlgorithm passed in (see the comment
         // there), and CreateCredentialRequestImpl's createCredentialRequestCredentialResponseEncryption()
         // hardcodes `P_256` + casts to ECPublicKey when building the JWE-header JWK — so this
-        // whole payload-encryption path is unaffected by the ML-DSA-65 signature migration and
+        // whole payload-encryption path is unaffected by the ML-DSA signature migration and
         // is NOT yet migrated to ML-KEM. Passing SigningAlgorithm.ML_DSA_65 here only satisfies
         // the compiler; the resulting JWSKeyPair.algorithm field mislabels an EC key.
         //
@@ -33,7 +33,7 @@ class CreatePayloadEncryptionKeyPairImpl @Inject constructor(
         // actively misleading. The real fix is a dedicated KeyAgreementAlgorithm type (with an
         // ML-KEM case once Android/AndroidKeyStore expose it) rather than continuing to borrow
         // the signing enum — flagging rather than doing that larger refactor here.
-        val keyPair = createJWSKeyPairInSoftware(SigningAlgorithm.ML_DSA_65)
+        val keyPair = createJWSKeyPairInSoftware(SigningAlgorithm.ML_DSA_44)
             .mapError(CreateJWSKeyPairError::toCreatePayloadEncryptionKeyPairError)
             .bind()
 

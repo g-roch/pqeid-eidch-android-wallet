@@ -263,6 +263,8 @@ dependencies {
     // Proximity
     implementation(libs.proximity)
 
+    implementation(libs.bouncycastle.provider)
+
     // Debug tooling
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

@@ -11,7 +11,9 @@ import ch.admin.foitt.wallet.platform.eventTracking.domain.usecase.ReportError
 import ch.admin.foitt.wallet.platform.pushNotification.data.WalletFirebaseMessagingService
 import ch.ubique.heidi.proximity.HeidiProximity
 import dagger.hilt.android.HiltAndroidApp
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import timber.log.Timber
+import java.security.Security
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -23,8 +25,18 @@ class WalletApplication : Application() {
         super.onCreate()
         setupLogging()
         setupNotificationChannels()
+        setupCryptoProviders()
 
         HeidiProximity(this).initialize()
+    }
+    private fun setupCryptoProviders() {
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(BouncyCastleProvider())
+        } else {
+            println("BouncyCastleProvider already exists, replacing it with a new instance.")
+            Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME)
+            Security.addProvider(BouncyCastleProvider())
+        }
     }
 
     private fun setupLogging() {

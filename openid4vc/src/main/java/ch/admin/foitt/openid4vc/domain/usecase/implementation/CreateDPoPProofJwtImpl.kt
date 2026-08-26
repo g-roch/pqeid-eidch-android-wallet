@@ -10,7 +10,7 @@ import ch.admin.foitt.openid4vc.domain.model.jwt.Jwt
 import ch.admin.foitt.openid4vc.domain.model.toJWSAlgorithm
 import ch.admin.foitt.openid4vc.domain.usecase.CreateDPoPProofJwt
 import ch.admin.foitt.openid4vc.domain.usecase.CreateJwk
-import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.MLDsaJWSSigner
+import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.toJWSSigner
 import ch.admin.foitt.openid4vc.utils.Constants
 import ch.admin.foitt.openid4vc.utils.createBase64UrlEncodedDigest
 import ch.admin.foitt.openid4vc.utils.createDigest
@@ -71,7 +71,7 @@ internal class CreateDPoPProofJwtImpl @Inject constructor(
 
         runSuspendCatching {
             SignedJWT(header, payload).apply {
-                sign(MLDsaJWSSigner(keyPair.keyPair.private))
+                sign(keyPair.algorithm.toJWSSigner(keyPair.keyPair.private))
             }.serialize()
         }.mapError { throwable ->
             CredentialOfferError.Unexpected(throwable)

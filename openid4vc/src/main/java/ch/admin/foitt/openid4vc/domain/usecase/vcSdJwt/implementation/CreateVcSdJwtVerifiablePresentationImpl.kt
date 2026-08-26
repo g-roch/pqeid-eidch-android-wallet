@@ -14,7 +14,7 @@ import ch.admin.foitt.openid4vc.domain.model.presentationRequest.toCreateVcSdJwt
 import ch.admin.foitt.openid4vc.domain.model.toJWSAlgorithm
 import ch.admin.foitt.openid4vc.domain.model.vcSdJwt.VcSdJwtCredential
 import ch.admin.foitt.openid4vc.domain.usecase.GetKeyPairForKeyBinding
-import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.MLDsaJWSSigner
+import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.toJWSSigner
 import ch.admin.foitt.openid4vc.domain.usecase.vcSdJwt.CreateVcSdJwtVerifiablePresentation
 import ch.admin.foitt.openid4vc.utils.JsonParsingError
 import ch.admin.foitt.openid4vc.utils.SafeJson
@@ -69,7 +69,7 @@ internal class CreateVcSdJwtVerifiablePresentationImpl @Inject constructor(
                 // JWK matches the key actually being used to sign. Re-add that check explicitly
                 // (comparing keyPair.public against the parsed Jwk) rather than silently
                 // dropping the validation it was providing.
-                val signer = MLDsaJWSSigner(keyPair.private)
+                val signer = keyBinding.algorithm.toJWSSigner(keyPair.private)
                 keyBindingJwt.sign(signer)
                 val keyBindingJwtString = keyBindingJwt.serialize()
 
