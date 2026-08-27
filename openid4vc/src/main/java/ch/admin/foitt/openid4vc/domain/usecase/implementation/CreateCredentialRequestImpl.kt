@@ -24,6 +24,7 @@ import com.github.michaelbull.result.coroutines.runSuspendCatching
 import com.github.michaelbull.result.mapError
 import com.nimbusds.jose.jwk.Curve.P_256
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.util.Base64URL
 import timber.log.Timber
 import java.security.interfaces.ECPublicKey
 import javax.inject.Inject
@@ -99,24 +100,37 @@ internal class CreateCredentialRequestImpl @Inject constructor(
         payloadEncryptionKeyPair: PayloadEncryptionKeyPair,
         responseEncryption: CredentialResponseEncryption,
     ): Result<CredentialRequestCredentialResponseEncryption, CreateCredentialRequestError> = coroutineBinding {
-        val publicKey = runSuspendCatching {
-            val pub = payloadEncryptionKeyPair.keyPair.keyPair.public
-            ECKey.Builder(P_256, pub as ECPublicKey).build()
+        val publicKey = payloadEncryptionKeyPair.keyPair.keyPair.public
+
+        val jwk = runSuspendCatching {
+            when (publicKey) {
+                is ECPublicKey -> {
+                    val ecKey = ECKey.Builder(P_256, publicKey).build()
+                    Jwk(
+                        kid = payloadEncryptionKeyPair.keyPair.keyId,
+                        kty = ecKey.keyType.toString(),
+                        use = "enc",
+                        crv = ecKey.curve.name,
+                        alg = responseEncryption.algValuesSupported.firstOrNull { it == "ECDH-ES" },
+                        x = ecKey.x.toString(),
+                        y = ecKey.y.toString(),
+                    )
+                }
+                else -> {
+                    // X-Wing public key — same "AKP" / raw-`pub` convention already used for ML-DSA JWKs (see mlDsaPublicKeyToJwk).
+                    Jwk(
+                        kid = payloadEncryptionKeyPair.keyPair.keyId,
+                        kty = "AKP",
+                        use = "enc",
+                        alg = responseEncryption.algValuesSupported.firstOrNull { it == "XWING" },
+                        pubKey = Base64URL.encode(publicKey.encoded).toString(),
+                    )
+                }
+            }
         }.mapError { throwable ->
             Timber.e(t = throwable, message = "Error when creating jwk for payload encryption")
             CredentialOfferError.Unexpected(throwable)
         }.bind()
-
-        // create JWK with wallet public key
-        val jwk = Jwk(
-            kid = payloadEncryptionKeyPair.keyPair.keyId,
-            kty = publicKey.keyType.toString(),
-            use = "enc",
-            crv = publicKey.curve.name,
-            alg = responseEncryption.algValuesSupported.firstOrNull(),
-            x = publicKey.x.toString(),
-            y = publicKey.y.toString(),
-        )
 
         CredentialRequestCredentialResponseEncryption(
             jwk = jwk,

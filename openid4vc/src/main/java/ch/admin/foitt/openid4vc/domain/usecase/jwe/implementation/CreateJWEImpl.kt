@@ -14,11 +14,16 @@ import com.nimbusds.jose.JWEHeader
 import com.nimbusds.jose.JWEObject
 import com.nimbusds.jose.Payload
 import com.nimbusds.jose.crypto.ECDHEncrypter
+import com.nimbusds.jose.crypto.XWingEncrypter
 import com.nimbusds.jose.jwk.Curve.parse
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.KeyType
+import com.nimbusds.jose.jwk.XWingKey
 import com.nimbusds.jose.util.Base64URL
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import timber.log.Timber
+import java.security.KeyFactory
+import java.security.spec.X509EncodedKeySpec
 import javax.inject.Inject
 
 internal class CreateJWEImpl @Inject constructor() : CreateJWE {
@@ -35,7 +40,6 @@ internal class CreateJWEImpl @Inject constructor() : CreateJWE {
         val jweHeader = JWEHeader.Builder(algorithm, encryptionMethod)
             .keyID(encryptionKey.kid)
             .apply {
-                // setting the compressionAlgorithm header automatically compresses the payload
                 if (compressionAlgorithm == CompressionAlgorithm.DEF.name) {
                     compressionAlgorithm(CompressionAlgorithm.DEF)
                 }
@@ -43,21 +47,29 @@ internal class CreateJWEImpl @Inject constructor() : CreateJWE {
             .build()
 
         val jwePayload = Payload(payload)
-
         val jwe = JWEObject(jweHeader, jwePayload)
 
-        // use encryption key to encrypt
-        val issuerPublicKey = when (encryptionKey.kty) {
-            KeyType.EC.value -> ECKey.Builder(
-                parse(encryptionKey.crv),
-                Base64URL.from(encryptionKey.x),
-                Base64URL.from(checkNotNull(encryptionKey.y) { "EC encryption key is missing the y coordinate" }),
-            ).build()
+        val encrypter = when (encryptionKey.kty) {
+            KeyType.EC.value -> {
+                val issuerPublicKey = ECKey.Builder(
+                    parse(encryptionKey.crv),
+                    Base64URL.from(encryptionKey.x),
+                    Base64URL.from(checkNotNull(encryptionKey.y) { "EC encryption key is missing the y coordinate" }),
+                ).build()
+                ECDHEncrypter(issuerPublicKey)
+            }
+
+            "AKP" -> {
+                val rawPub = Base64URL(checkNotNull(encryptionKey.pubKey) { "XWING encryption key is missing pub" }).decode()
+                val issuerPublicKey = KeyFactory.getInstance("XWING", BouncyCastleProvider.PROVIDER_NAME)
+                    .generatePublic(X509EncodedKeySpec(rawPub))
+                XWingEncrypter(issuerPublicKey as XWingKey?)
+            }
 
             else -> error("unsupported key type for jwe creation")
         }
 
-        jwe.encrypt(ECDHEncrypter(issuerPublicKey))
+        jwe.encrypt(encrypter)
 
         jwe.serialize()
     }.mapError { throwable ->
