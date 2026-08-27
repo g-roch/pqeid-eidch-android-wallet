@@ -17,6 +17,11 @@ import com.nimbusds.jose.crypto.Ed25519Verifier
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.KeyType
+import com.nimbusds.jose.crypto.MLDSAVerifier
+import org.bouncycastle.jcajce.spec.MLDSAParameterSpec
+import org.bouncycastle.jcajce.spec.MLDSAPublicKeySpec
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+import java.security.KeyFactory
 import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.util.Base64URL
 import javax.inject.Inject
@@ -58,8 +63,13 @@ internal class VerifyJwtSignatureImpl @Inject constructor() : VerifyJwtSignature
             ).build()
             Ed25519Verifier(key)
         }
-        "AKP" -> MLDsaJWSVerifier(
-            MLDsaJWSVerifier.publicKeyFromRawBytes(Base64URL(publicKey.pubKey).decode())
+        "AKP" -> MLDSAVerifier(
+            KeyFactory.getInstance("ML-DSA", BouncyCastleProvider.PROVIDER_NAME).generatePublic(
+                MLDSAPublicKeySpec(
+                    MLDSAParameterSpec.ml_dsa_44,
+                    Base64URL(checkNotNull(publicKey.pubKey) { "AKP key missing pub" }).decode(),
+                    )
+            )
         )
         else -> error("unsupported key type '${publicKey.kty}' for jwt signature verification")
     }

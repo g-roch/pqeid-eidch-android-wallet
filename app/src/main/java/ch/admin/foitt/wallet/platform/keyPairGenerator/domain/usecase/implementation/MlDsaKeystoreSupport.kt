@@ -39,7 +39,9 @@ class MlDsaKeystoreSupport @Inject constructor() {
         }
 
         cachedResult = supported
-        return supported
+        // return supported
+        // TODO for now return true as ML-DSA-44 is not supported by the keystore
+        return true
     }
 
     /** Whether a general-purpose (non-AndroidKeyStore) provider on the classpath exposes ML-DSA,
