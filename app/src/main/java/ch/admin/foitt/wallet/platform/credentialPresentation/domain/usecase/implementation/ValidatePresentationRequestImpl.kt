@@ -96,7 +96,7 @@ class ValidatePresentationRequestImpl @Inject constructor(
             Err(CredentialPresentationError.InvalidTransactionData(responseUri, authorizationRequest.state)).bind<Unit>()
         }
 
-        // POC: the verifier DID is not registered in any swiyu trust registry, so
+        // TODO the verifier DID is not registered in any swiyu trust registry, so
         // getActorEnvironment(...) returns EXTERNAL and this would reject the request with
         // "unknown_registry". Disabled so a self-hosted PQ verifier can be used.
         // if (authorizationRequest.clientIdentifier.clientIdPrefix == ClientIdentifier.ClientIdPrefix.DecentralizedIdentifier) {

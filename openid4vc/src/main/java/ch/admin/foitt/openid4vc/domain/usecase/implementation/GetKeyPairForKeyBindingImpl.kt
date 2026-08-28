@@ -29,7 +29,7 @@ internal class GetKeyPairForKeyBindingImpl @Inject constructor(
                 val publicKey = keyBinding.publicKey
                 val privateKey = keyBinding.privateKey
                 if (publicKey != null && privateKey != null) {
-                    getSoftwareKeyPair(publicKey, privateKey)
+                    getSoftwareKeyPair(keyBinding.algorithm, publicKey, privateKey)
                         .mapError(GetSoftwareKeyPairError::toGetKeyPairForKeyBindingError)
                         .bind()
                 } else {
