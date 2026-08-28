@@ -198,7 +198,7 @@ class CredentialOfferRepositoryImpl @Inject constructor(
                 DpopBindingEntity(
                     id = keyBinding.identifier,
                     credentialAuthenticationId = credentialAuthenticationId,
-                    algorithm = keyBinding.algorithm.name,
+                    algorithm = keyBinding.algorithm.stdName,
                     bindingType = keyBinding.bindingType,
                     publicKey = keyBinding.publicKey,
                     privateKey = keyBinding.privateKey,
@@ -382,7 +382,9 @@ class CredentialOfferRepositoryImpl @Inject constructor(
 
     private fun CredentialKeyBindingEntity.toKeyBinding(): KeyBinding = KeyBinding(
         identifier = id,
-        algorithm = SigningAlgorithm.valueOf(algorithm),
+        algorithm = checkNotNull(SigningAlgorithm.fromStdName(algorithm)) {
+            "Unknown signing algorithm: $algorithm"
+        },
         bindingType = bindingType,
         publicKey = publicKey,
         privateKey = privateKey

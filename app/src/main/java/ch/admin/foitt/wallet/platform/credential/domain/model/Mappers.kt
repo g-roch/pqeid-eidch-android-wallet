@@ -67,9 +67,11 @@ private fun BindingScope<AnyCredentialError>.bundleItemWithKeyBindingToAnyCreden
 
 fun CredentialKeyBindingEntity.toKeyBinding(): Result<KeyBinding, KeyBindingError> = binding {
     val signingAlgorithm = runSuspendCatching {
-        SigningAlgorithm.valueOf(algorithm)
+        checkNotNull(SigningAlgorithm.fromStdName(algorithm)) {
+            "Unknown signing algorithm: $algorithm"
+        }
     }.mapError { throwable ->
-        throwable.toKeyBindingError("SigningAlgorithm.valueOf($algorithm) error")
+        throwable.toKeyBindingError("SigningAlgorithm.fromStdName($algorithm) error")
     }.bind()
 
     KeyBinding(

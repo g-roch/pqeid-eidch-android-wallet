@@ -44,7 +44,14 @@ class FetchStatusFromTokenStatusListImpl @Inject constructor(
 
         runSuspendCatching {
             val statusListHost = URI(statusList.uri).host
-            check(trustedStatusListHost == statusListHost) { "status list host is not trusted" }
+            if (trustedStatusListHost != null) {
+                check(trustedStatusListHost == statusListHost) { "status list host is not trusted" }
+            } else {
+                // POC: issuer's DID host has no entry in the swiyu status list registry mapping,
+                // so there is no trusted host to compare against. Accept the status list URI the
+                // issuer itself referenced instead of rejecting it outright.
+                Timber.w("No status list mapping for issuer host ${issuerDidUrl.host}; accepting status list host $statusListHost")
+            }
         }.mapError { throwable ->
             Timber.e(t = throwable, message = "status list not in swiyu registry")
             CredentialStatusError.UnknownRegistry

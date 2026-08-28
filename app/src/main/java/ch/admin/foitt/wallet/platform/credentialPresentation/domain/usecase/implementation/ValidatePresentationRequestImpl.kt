@@ -32,6 +32,7 @@ import com.github.michaelbull.result.coroutines.coroutineBinding
 import com.github.michaelbull.result.coroutines.runSuspendCatching
 import com.github.michaelbull.result.mapError
 import kotlinx.serialization.json.jsonPrimitive
+import timber.log.Timber
 import uniffi.heidi_dcql_rust.DcqlQuery
 import javax.inject.Inject
 
@@ -95,12 +96,15 @@ class ValidatePresentationRequestImpl @Inject constructor(
             Err(CredentialPresentationError.InvalidTransactionData(responseUri, authorizationRequest.state)).bind<Unit>()
         }
 
-        if (authorizationRequest.clientIdentifier.clientIdPrefix == ClientIdentifier.ClientIdPrefix.DecentralizedIdentifier) {
-            val verifierEnvironment = getActorEnvironment(authorizationRequest.clientIdentifier.clientId)
-            if (verifierEnvironment == ActorEnvironment.EXTERNAL) {
-                Err(CredentialPresentationError.UnknownRegistry(responseUri, authorizationRequest.state)).bind()
-            }
-        }
+        // POC: the verifier DID is not registered in any swiyu trust registry, so
+        // getActorEnvironment(...) returns EXTERNAL and this would reject the request with
+        // "unknown_registry". Disabled so a self-hosted PQ verifier can be used.
+        // if (authorizationRequest.clientIdentifier.clientIdPrefix == ClientIdentifier.ClientIdPrefix.DecentralizedIdentifier) {
+        //     val verifierEnvironment = getActorEnvironment(authorizationRequest.clientIdentifier.clientId)
+        //     if (verifierEnvironment == ActorEnvironment.EXTERNAL) {
+        //         Err(CredentialPresentationError.UnknownRegistry(responseUri, authorizationRequest.state)).bind()
+        //     }
+        // }
 
         authorizationRequest
     }
@@ -136,6 +140,7 @@ class ValidatePresentationRequestImpl @Inject constructor(
     private fun AuthorizationRequest.isValid() =
         responseType == VP_TOKEN &&
             responseMode in SUPPORTED_RESPONSE_MODES &&
+            // encrypted response mode requires the verifier to supply an encryption key
             (responseMode != DIRECT_POST_JWT || !clientMetaData?.jwks?.keys.isNullOrEmpty())
 
     private suspend fun verifierAttestationTrusted(
@@ -220,9 +225,10 @@ class ValidatePresentationRequestImpl @Inject constructor(
     private companion object {
         const val JWT_HEADER_TYP = "oauth-authz-req+jwt"
         const val VP_TOKEN = "vp_token"
+        const val DIRECT_POST = "direct_post"
         const val DIRECT_POST_JWT = "direct_post.jwt"
         const val DC_API_JWT = "dc_api.jwt"
-        val SUPPORTED_RESPONSE_MODES = listOf(DIRECT_POST_JWT, DC_API_JWT)
+        val SUPPORTED_RESPONSE_MODES = listOf(DIRECT_POST, DIRECT_POST_JWT, DC_API_JWT)
         const val CLAIM_AUDIENCE = "aud"
     }
 }
