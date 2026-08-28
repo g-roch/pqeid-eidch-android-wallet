@@ -1,63 +1,44 @@
 package ch.admin.foitt.wallet.platform.payloadEncryption.domain.usecase.implementation
 
-import ch.admin.foitt.openid4vc.domain.model.SigningAlgorithm
+import ch.admin.foitt.openid4vc.domain.model.KeyExchangeAlgorithm
+import ch.admin.foitt.openid4vc.domain.model.credentialoffer.JWEKeyPair
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialResponseEncryption
-import ch.admin.foitt.openid4vc.domain.model.payloadEncryption.PayloadEncryptionKeyPair
-import ch.admin.foitt.openid4vc.domain.model.credentialoffer.JWSKeyPair
 import ch.admin.foitt.openid4vc.domain.model.keyBinding.KeyBindingType
-import ch.admin.foitt.wallet.platform.keyPairGenerator.domain.model.CreateJWSKeyPairError
-import ch.admin.foitt.wallet.platform.keyPairGenerator.domain.model.toCreateJWSKeyPairError
-import ch.admin.foitt.wallet.platform.keyPairGenerator.domain.usecase.CreateJWSKeyPairInSoftware
+import ch.admin.foitt.openid4vc.domain.model.payloadEncryption.PayloadEncryptionKeyPair
 import ch.admin.foitt.wallet.platform.payloadEncryption.domain.model.CreatePayloadEncryptionKeyPairError
 import ch.admin.foitt.wallet.platform.payloadEncryption.domain.model.toCreatePayloadEncryptionKeyPairError
 import ch.admin.foitt.wallet.platform.payloadEncryption.domain.usecase.CreatePayloadEncryptionKeyPair
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.coroutines.coroutineBinding
-import com.github.michaelbull.result.mapError
 import com.github.michaelbull.result.coroutines.runSuspendCatching
-import org.bouncycastle.jce.provider.BouncyCastleProvider
-import com.nimbusds.jose.jwk.gen.XWingKeyGenerator;
-import java.security.KeyPairGenerator
-import javax.inject.Inject
+import com.github.michaelbull.result.mapError
+import com.nimbusds.jose.jwk.gen.XWingKeyGenerator
 import java.util.UUID
+import javax.inject.Inject
 
-class CreatePayloadEncryptionKeyPairImpl @Inject constructor(
-    private val createJWSKeyPairInSoftware: CreateJWSKeyPairInSoftware,
-) : CreatePayloadEncryptionKeyPair {
+class CreatePayloadEncryptionKeyPairImpl @Inject constructor() : CreatePayloadEncryptionKeyPair {
     override suspend fun invoke(
         credentialResponseEncryption: CredentialResponseEncryption,
     ): Result<PayloadEncryptionKeyPair, CreatePayloadEncryptionKeyPairError> = coroutineBinding {
-
-        // TODO for now sitll ES256
-        /*val keyPair = createJWSKeyPairInSoftware(SigningAlgorithm.)
-            .mapError(CreateJWSKeyPairError::toCreatePayloadEncryptionKeyPairError)
-            .bind()
-
-        PayloadEncryptionKeyPair(
-            keyPair = keyPair,
-            alg = credentialResponseEncryption.algValuesSupported.first(),
-            enc = credentialResponseEncryption.encValuesSupported.first(),
-            zip = credentialResponseEncryption.zipValuesSupported?.firstOrNull(),
-        )*/
-
-        /*val keyPair = runSuspendCatching {
-            val generator = KeyPairGenerator.getInstance(XWING_JCA_NAME, BouncyCastleProvider.PROVIDER_NAME)
-            generator.generateKeyPair()
-        }.mapError ( CreateJWSKeyPairError::toCreatePayloadEncryptionKeyPairError()
-            ).bind()*/
-
-        val keyPair = XWingKeyGenerator().keyID(UUID.randomUUID().toString()).generate().toKeyPair()
-
-        val jwsKeyPair = JWSKeyPair(
-            keyId = UUID.randomUUID().toString(),
-            algorithm = SigningAlgorithm.ES256, // TODO NOT actually used for signing — X-Wing key, no SigningAlgorithm exists for it
-            keyPair = keyPair,
-            bindingType = KeyBindingType.SOFTWARE,
-        )
+        // X-Wing hybrid post-quantum KEM (X25519 + ML-KEM-768). Generated in software:
+        // BouncyCastle has no JCA KeyPairGenerator/keystore support for X-Wing, so the
+        // key is kept as the raw XWingKey JWK (see JWEKeyPair).
+        val jwk = runSuspendCatching {
+            XWingKeyGenerator()
+                .keyID(UUID.randomUUID().toString())
+                .generate()
+        }.mapError { throwable ->
+            throwable.toCreatePayloadEncryptionKeyPairError()
+        }.bind()
 
         PayloadEncryptionKeyPair(
-            keyPair = jwsKeyPair,
-            alg = credentialResponseEncryption.algValuesSupported.first(),
+            keyPair = JWEKeyPair(
+                algorithm = KeyExchangeAlgorithm.X_WING,
+                jwk = jwk,
+                keyId = jwk.keyID,
+                bindingType = KeyBindingType.SOFTWARE,
+            ),
+            alg = KeyExchangeAlgorithm.X_WING.stdName,
             enc = credentialResponseEncryption.encValuesSupported.first(),
             zip = credentialResponseEncryption.zipValuesSupported?.firstOrNull(),
         )

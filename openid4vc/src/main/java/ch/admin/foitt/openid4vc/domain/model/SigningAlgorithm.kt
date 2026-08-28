@@ -6,7 +6,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Algorithms the wallet supports for key generation and signing.
+ * Algorithms the wallet supports for signing.
  *
  * In contrast to [SignatureAlgorithm], these algorithms are used to generate the
  * wallet's own key pairs and create signatures (proofs, DPoP, key binding, ...).

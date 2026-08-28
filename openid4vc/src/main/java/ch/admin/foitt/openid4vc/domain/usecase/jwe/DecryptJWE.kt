@@ -2,12 +2,12 @@ package ch.admin.foitt.openid4vc.domain.usecase.jwe
 
 import ch.admin.foitt.openid4vc.domain.model.jwe.DecryptJWEError
 import com.github.michaelbull.result.Result
-import java.security.PrivateKey
+import com.nimbusds.jose.jwk.XWingKey
 
 interface DecryptJWE {
     operator fun invoke(
         jweString: String,
-        privateKey: PrivateKey,
+        xWingKey: XWingKey,
         jweMaxCompressedCipherTextLength: Int = JWE_MAX_COMPRESSED_CIPHER_TEXT_LENGTH,
         jweMaxDecompressedPayloadSize: Int = JWE_MAX_DECOMPRESSED_PAYLOAD_SIZE
     ): Result<String, DecryptJWEError>

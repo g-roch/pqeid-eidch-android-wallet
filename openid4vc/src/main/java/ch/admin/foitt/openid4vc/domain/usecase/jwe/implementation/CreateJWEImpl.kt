@@ -20,10 +20,7 @@ import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.KeyType
 import com.nimbusds.jose.jwk.XWingKey
 import com.nimbusds.jose.util.Base64URL
-import org.bouncycastle.jce.provider.BouncyCastleProvider
 import timber.log.Timber
-import java.security.KeyFactory
-import java.security.spec.X509EncodedKeySpec
 import javax.inject.Inject
 
 internal class CreateJWEImpl @Inject constructor() : CreateJWE {
@@ -59,14 +56,20 @@ internal class CreateJWEImpl @Inject constructor() : CreateJWE {
                 ECDHEncrypter(issuerPublicKey)
             }
 
-            "AKP" -> {
-                val rawPub = Base64URL(checkNotNull(encryptionKey.pubKey) { "XWING encryption key is missing pub" }).decode()
-                val issuerPublicKey = KeyFactory.getInstance("XWING", BouncyCastleProvider.PROVIDER_NAME)
-                    .generatePublic(X509EncodedKeySpec(rawPub))
-                XWingEncrypter(issuerPublicKey as XWingKey?)
+            // X-Wing hybrid post-quantum KEM. "XWING" is the kty of the nimbus fork's
+            // XWingKey JWK (raw public key in "x"); "AKP" is accepted for the raw-"pub"
+            // variant this project also emits for post-quantum keys.
+            XWingKey.KEY_TYPE.value, "AKP" -> {
+                val rawPublicKey = encryptionKey.x ?: checkNotNull(encryptionKey.pubKey) {
+                    "XWING encryption key is missing the public key (\"x\"/\"pub\")"
+                }
+                val issuerPublicKey = XWingKey.Builder(Base64URL.from(rawPublicKey))
+                    .keyID(encryptionKey.kid)
+                    .build()
+                XWingEncrypter(issuerPublicKey)
             }
 
-            else -> error("unsupported key type for jwe creation")
+            else -> error("unsupported key type for jwe creation: ${encryptionKey.kty}")
         }
 
         jwe.encrypt(encrypter)
