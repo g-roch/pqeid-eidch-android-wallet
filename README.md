@@ -2,6 +2,18 @@
 
 # swiyu - Android wallet
 
+> [!CAUTION]
+> This repository is used for development and not for production.
+
+Remaining tasks:
+- Error when adding a credential when the app is already running in the background
+- Switch to ML-DSA-65
+- Use the keystore instead of BouncyCastle or Nimbus
+
+The required libraries are required to make the app work:
+- [didresolver](https://github.com/g-roch/pqeid-didresolver-kotlin-android)
+- [nimbus-jose-jwt](https://github.com/g-roch/pqeid-nimbus-jose-jwt)
+
 An official Swiss Government project made by the [Federal Office of Information Technology, Systems and Telecommunication FOITT](https://www.bit.admin.ch/en)
 as part of the electronic identity (E-ID) project.
 
