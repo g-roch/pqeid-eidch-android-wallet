@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.security.keystore.StrongBoxUnavailableException
 import ch.admin.foitt.openid4vc.di.DefaultDispatcher
 import ch.admin.foitt.openid4vc.domain.model.KeyStorageSecurityLevel
 import ch.admin.foitt.openid4vc.domain.model.SigningAlgorithm
@@ -154,14 +155,30 @@ internal class CreateJWSKeyPairInHardwareImpl @Inject constructor(
         provider: String,
         spec: KeyGenParameterSpec
     ): Result<KeyPair, Throwable> = runSuspendCatching {
-        val generator = KeyPairGenerator.getInstance(signingAlgorithm.toKeyAlgorithm(), provider)
-        generator.initialize(spec)
-        generator.generateKeyPair()
+        try {
+            KeyPairGenerator.getInstance(signingAlgorithm.toKeyAlgorithm(), provider).apply {
+                initialize(spec)
+            }.generateKeyPair()
+        } catch (e: StrongBoxUnavailableException) {
+            if (!spec.isStrongBoxBacked) throw e
+            Timber.w(e, "StrongBox rejected ${signingAlgorithm.stdName}, retrying without StrongBox")
+            val nonStrongBoxSpec = KeyGenParameterSpec.Builder(spec.keystoreAlias, spec.purposes)
+                .setIsStrongBoxBacked(false)
+                .apply {
+                    if (spec.attestationChallenge != null) {
+                        setAttestationChallenge(spec.attestationChallenge)
+                    }
+                }
+                .build()
+            KeyPairGenerator.getInstance(signingAlgorithm.toKeyAlgorithm(), provider).apply {
+                initialize(nonStrongBoxSpec)
+            }.generateKeyPair()
+        }
     }
 
     private fun SigningAlgorithm.toKeyAlgorithm() = when (this) {
-        SigningAlgorithm.ES256,
-        SigningAlgorithm.ES512 -> KeyProperties.KEY_ALGORITHM_EC
+        SigningAlgorithm.ML_DSA_44 -> "ML-DSA-44"
+        SigningAlgorithm.ES256 -> KeyProperties.KEY_ALGORITHM_EC
     }
 
     companion object {

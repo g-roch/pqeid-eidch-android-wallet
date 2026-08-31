@@ -24,7 +24,9 @@ internal class GetBindingKeyPairImpl @Inject constructor(
         val keyBinding = authentication.dpopBinding?.let {
             KeyBinding(
                 identifier = it.id,
-                algorithm = SigningAlgorithm.valueOf(it.algorithm),
+                algorithm = checkNotNull(SigningAlgorithm.fromStdName(it.algorithm)) {
+                    "Unknown signing algorithm: ${it.algorithm}"
+                },
                 bindingType = it.bindingType,
                 publicKey = it.publicKey,
                 privateKey = it.privateKey,

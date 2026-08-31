@@ -44,6 +44,7 @@ import com.github.michaelbull.result.getOrThrow
 import com.github.michaelbull.result.mapBoth
 import com.github.michaelbull.result.mapError
 import com.github.michaelbull.result.onOk
+import com.nimbusds.jose.jwk.XWingKey
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ClientRequestException
@@ -65,7 +66,6 @@ import io.ktor.http.path
 import kotlinx.io.IOException
 import timber.log.Timber
 import java.net.URL
-import java.security.PrivateKey
 import javax.inject.Inject
 import javax.inject.Named
 
@@ -302,12 +302,12 @@ internal class CredentialOfferRepositoryImpl @Inject constructor(
         }.bind()
 
         val responseBody = httpResponse.body<String>()
-        val keyPair = payloadEncryption.responseEncryptionKeyPair.keyPair.keyPair.private
+        val xWingKey = payloadEncryption.responseEncryptionKeyPair.keyPair.jwk
 
         runSuspendCatching {
             when (httpResponse.status) {
-                HttpStatusCode.OK -> decodeVerifiableCredential(responseBody, keyPair)
-                HttpStatusCode.Accepted -> decodeCredentialPayload<CredentialResponse.DeferredCredential>(responseBody, keyPair)
+                HttpStatusCode.OK -> decodeVerifiableCredential(responseBody, xWingKey)
+                HttpStatusCode.Accepted -> decodeCredentialPayload<CredentialResponse.DeferredCredential>(responseBody, xWingKey)
                 else -> error("Unhandled credential response status: ${httpResponse.status}")
             }
         }.mapError { throwable ->
@@ -345,16 +345,16 @@ internal class CredentialOfferRepositoryImpl @Inject constructor(
         else -> CredentialOfferError.Unexpected(this)
     }
 
-    private fun decodeVerifiableCredential(payload: String, keyPair: PrivateKey): CredentialResponse {
-        val response = decodeCredentialPayload<CredentialResponse.VerifiableCredential>(payload, keyPair)
+    private fun decodeVerifiableCredential(payload: String, xWingKey: XWingKey): CredentialResponse {
+        val response = decodeCredentialPayload<CredentialResponse.VerifiableCredential>(payload, xWingKey)
         check(response.credentials.isNotEmpty()) { "No credentials found" }
         return response
     }
 
-    private inline fun <reified T> decodeCredentialPayload(payload: String, keyPair: PrivateKey): T {
+    private inline fun <reified T> decodeCredentialPayload(payload: String, xWingKey: XWingKey): T {
         val jsonObjectString = decryptJWE(
             jweString = payload,
-            privateKey = keyPair,
+            xWingKey = xWingKey,
         ).mapError {
             when (it) {
                 is JWEError.Unexpected -> throw it.throwable
@@ -410,12 +410,12 @@ internal class CredentialOfferRepositoryImpl @Inject constructor(
         }.bind()
 
         val responseBody = httpResponse.body<String>()
-        val keyPair = payloadEncryption.responseEncryptionKeyPair.keyPair.keyPair.private
+        val xWingKey = payloadEncryption.responseEncryptionKeyPair.keyPair.jwk
 
         runSuspendCatching {
             when (httpResponse.status) {
-                HttpStatusCode.OK -> decodeVerifiableCredential(responseBody, keyPair)
-                HttpStatusCode.Accepted -> decodeCredentialPayload<CredentialResponse.DeferredCredential>(responseBody, keyPair)
+                HttpStatusCode.OK -> decodeVerifiableCredential(responseBody, xWingKey)
+                HttpStatusCode.Accepted -> decodeCredentialPayload<CredentialResponse.DeferredCredential>(responseBody, xWingKey)
                 else -> error("Unhandled credential response status: ${httpResponse.status}")
             }
         }.mapError { throwable ->

@@ -106,6 +106,9 @@ internal class FetchVerifiableCredentialImpl @Inject constructor(
                     proofs = proofs,
                 )
             ).mapError(CreateCredentialRequestError::toFetchVerifiableCredentialError)
+                .onErr { error ->
+                    println("createCredentialRequest failed: $error")
+                }
                 .bind()
 
             val credentialDpopProof = createCredentialDpopProof(

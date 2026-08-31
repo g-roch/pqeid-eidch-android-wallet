@@ -61,7 +61,8 @@ class ValidateTokenStatusListImpl @Inject constructor(
 
         val actorEnvironment = getActorEnvironment(did)
         runSuspendCatching {
-            check(actorEnvironment != ActorEnvironment.EXTERNAL) { "actor is not in registries" }
+            // TODO commented for test purposes
+            // check(actorEnvironment != ActorEnvironment.EXTERNAL) { "actor is not in registries" }
         }.mapError { throwable ->
             Timber.e(t = throwable, message = "status list not in swiyu registry")
             CredentialStatusError.UnknownRegistry

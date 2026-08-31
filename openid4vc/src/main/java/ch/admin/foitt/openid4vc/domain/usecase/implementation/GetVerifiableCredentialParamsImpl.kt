@@ -66,7 +66,7 @@ internal class GetVerifiableCredentialParamsImpl @Inject constructor(
             proofTypeConfig = proofTypeConfig,
             tokenEndpoint = issuerConfig.tokenEndpoint,
             dpopSigningAlgValuesSupported = issuerConfig.dpopSigningAlgValuesSupported?.takeIf {
-                issuerConfig.supportsDpop(listOf(SigningAlgorithm.ES256))
+                issuerConfig.supportsDpop(listOf(SigningAlgorithm.ML_DSA_44))
             },
             grants = credentialOffer.grants,
             issuerEndpoint = issuerInfo.credentialIssuer,

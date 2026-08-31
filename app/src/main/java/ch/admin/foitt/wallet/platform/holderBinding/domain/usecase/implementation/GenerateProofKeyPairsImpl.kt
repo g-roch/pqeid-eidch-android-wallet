@@ -12,6 +12,7 @@ import ch.admin.foitt.wallet.platform.holderBinding.domain.model.toGenerateProof
 import ch.admin.foitt.wallet.platform.holderBinding.domain.usecase.GenerateProofKeyPairs
 import ch.admin.foitt.wallet.platform.keyPairGenerator.domain.model.CreateJWSKeyPairError
 import ch.admin.foitt.wallet.platform.keyPairGenerator.domain.usecase.CreateJWSKeyPairInSoftware
+import ch.admin.foitt.wallet.platform.keyPairGenerator.domain.usecase.implementation.MlDsaKeystoreSupport
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
@@ -22,6 +23,7 @@ import javax.inject.Inject
 class GenerateProofKeyPairsImpl @Inject constructor(
     private val createJWSKeyPairInSoftware: CreateJWSKeyPairInSoftware,
     private val requestKeyAttestation: RequestKeyAttestation,
+    private val mlDsaKeystoreSupport: MlDsaKeystoreSupport,
 ) : GenerateProofKeyPairs {
 
     override suspend fun invoke(
@@ -61,8 +63,13 @@ class GenerateProofKeyPairsImpl @Inject constructor(
         }
     }
 
-    // priority list of preferred signing algorithms (first position = highest priority)
-    private fun getPreferredSigningAlgorithms() = listOf(SigningAlgorithm.ES256)
+    // Priority list of preferred signing algorithms (first position = highest priority).
+    private fun getPreferredSigningAlgorithms(): List<SigningAlgorithm> = buildList {
+        if (mlDsaKeystoreSupport.isSupported()) {
+            add(SigningAlgorithm.ML_DSA_44)
+        }
+        add(SigningAlgorithm.ES256)
+    }
 
     private suspend fun createSoftwareKeyPair(
         signingAlgorithm: SigningAlgorithm

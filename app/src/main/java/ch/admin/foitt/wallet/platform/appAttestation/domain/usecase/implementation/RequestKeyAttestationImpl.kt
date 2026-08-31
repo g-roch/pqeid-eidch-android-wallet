@@ -64,7 +64,7 @@ class RequestKeyAttestationImpl @Inject constructor(
                 error.toRequestKeyAttestationError("RequestKeyAttestation certificate chain failed")
             }.bind()
 
-        val keyJwk = Jwk.fromEcKey(keyJwkString, certificateChainBase64)
+        val keyJwk = Jwk.fromJwkString(keyJwkString, certificateChainBase64)
             .mapError { error ->
                 error.toRequestKeyAttestationError("RequestKeyAttestation Jwk creation failed")
             }.bind()

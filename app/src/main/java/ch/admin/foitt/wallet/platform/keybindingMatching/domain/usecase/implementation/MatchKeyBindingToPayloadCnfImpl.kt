@@ -1,11 +1,10 @@
 package ch.admin.foitt.wallet.platform.keybindingMatching.domain.usecase.implementation
 
 import ch.admin.foitt.openid4vc.domain.model.jwk.Jwk
-import ch.admin.foitt.openid4vc.domain.model.jwk.toEcJwk
+import ch.admin.foitt.openid4vc.domain.model.jwk.mlDsaPublicKeyToJwk
 import ch.admin.foitt.openid4vc.domain.model.keyBinding.KeyBinding
 import ch.admin.foitt.openid4vc.domain.model.keyBinding.KeyBindingType
 import ch.admin.foitt.openid4vc.domain.model.sdjwt.SdJwt
-import ch.admin.foitt.openid4vc.domain.model.toCurve
 import ch.admin.foitt.openid4vc.domain.usecase.GetHardwareKeyPair
 import ch.admin.foitt.openid4vc.utils.Constants.ANDROID_KEY_STORE
 import ch.admin.foitt.wallet.platform.appAttestation.domain.model.Confirmation
@@ -19,11 +18,7 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.coroutines.coroutineBinding
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.mapError
-import com.nimbusds.jose.jwk.ECKey
 import kotlinx.serialization.json.jsonObject
-import java.security.KeyFactory
-import java.security.interfaces.ECPublicKey
-import java.security.spec.X509EncodedKeySpec
 import javax.inject.Inject
 
 class MatchKeyBindingToPayloadCnfImpl @Inject constructor(
@@ -61,18 +56,15 @@ class MatchKeyBindingToPayloadCnfImpl @Inject constructor(
     }
 
     private suspend fun KeyBinding.toJwk(): Jwk? {
-        val ecPublicKey: ECPublicKey = when (bindingType) {
-            KeyBindingType.SOFTWARE -> {
-                publicKey?.let { bytes ->
-                    val keyFactory = KeyFactory.getInstance("EC")
-                    keyFactory.generatePublic(X509EncodedKeySpec(bytes)) as ECPublicKey
-                }
-            }
-
-            KeyBindingType.HARDWARE -> {
-                getHardwareKeyPair(identifier, ANDROID_KEY_STORE).get()?.public as? ECPublicKey
-            }
+        // KeyFactory.getInstance("ML-DSA", ...) parses the standard X.509/SubjectPublicKeyInfo
+        // encoding — same encoding for both the software-stored raw bytes and
+        // PublicKey#getEncoded() from an AndroidKeyStore-backed key, so both branches can share
+        // one path (unlike the old EC code, ML-DSA public keys don't need an explicit curve
+        // parameter passed alongside them).
+        val publicKeyBytes: ByteArray = when (bindingType) {
+            KeyBindingType.SOFTWARE -> publicKey
+            KeyBindingType.HARDWARE -> getHardwareKeyPair(identifier, ANDROID_KEY_STORE).get()?.public?.encoded
         } ?: return null
-        return ECKey.Builder(algorithm.toCurve(), ecPublicKey).build().toEcJwk(certificateChainBase64 = null)
+        return mlDsaPublicKeyToJwk(rawPublicKey = publicKeyBytes, kid = null, certificateChainBase64 = null)
     }
 }

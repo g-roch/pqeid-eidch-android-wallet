@@ -14,9 +14,11 @@ import com.nimbusds.jose.JWEHeader
 import com.nimbusds.jose.JWEObject
 import com.nimbusds.jose.Payload
 import com.nimbusds.jose.crypto.ECDHEncrypter
+import com.nimbusds.jose.crypto.XWingEncrypter
 import com.nimbusds.jose.jwk.Curve.parse
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.KeyType
+import com.nimbusds.jose.jwk.XWingKey
 import com.nimbusds.jose.util.Base64URL
 import timber.log.Timber
 import javax.inject.Inject
@@ -35,7 +37,6 @@ internal class CreateJWEImpl @Inject constructor() : CreateJWE {
         val jweHeader = JWEHeader.Builder(algorithm, encryptionMethod)
             .keyID(encryptionKey.kid)
             .apply {
-                // setting the compressionAlgorithm header automatically compresses the payload
                 if (compressionAlgorithm == CompressionAlgorithm.DEF.name) {
                     compressionAlgorithm(CompressionAlgorithm.DEF)
                 }
@@ -43,21 +44,35 @@ internal class CreateJWEImpl @Inject constructor() : CreateJWE {
             .build()
 
         val jwePayload = Payload(payload)
-
         val jwe = JWEObject(jweHeader, jwePayload)
 
-        // use encryption key to encrypt
-        val issuerPublicKey = when (encryptionKey.kty) {
-            KeyType.EC.value -> ECKey.Builder(
-                parse(encryptionKey.crv),
-                Base64URL.from(encryptionKey.x),
-                Base64URL.from(checkNotNull(encryptionKey.y) { "EC encryption key is missing the y coordinate" }),
-            ).build()
+        val encrypter = when (encryptionKey.kty) {
+            KeyType.EC.value -> {
+                val issuerPublicKey = ECKey.Builder(
+                    parse(encryptionKey.crv),
+                    Base64URL.from(encryptionKey.x),
+                    Base64URL.from(checkNotNull(encryptionKey.y) { "EC encryption key is missing the y coordinate" }),
+                ).build()
+                ECDHEncrypter(issuerPublicKey)
+            }
 
-            else -> error("unsupported key type for jwe creation")
+            // X-Wing hybrid post-quantum KEM. "XWING" is the kty of the nimbus fork's
+            // XWingKey JWK (raw public key in "x"); "AKP" is accepted for the raw-"pub"
+            // variant this project also emits for post-quantum keys.
+            XWingKey.KEY_TYPE.value, "AKP" -> {
+                val rawPublicKey = encryptionKey.x ?: checkNotNull(encryptionKey.pubKey) {
+                    "XWING encryption key is missing the public key (\"x\"/\"pub\")"
+                }
+                val issuerPublicKey = XWingKey.Builder(Base64URL.from(rawPublicKey))
+                    .keyID(encryptionKey.kid)
+                    .build()
+                XWingEncrypter(issuerPublicKey)
+            }
+
+            else -> error("unsupported key type for jwe creation: ${encryptionKey.kty}")
         }
 
-        jwe.encrypt(ECDHEncrypter(issuerPublicKey))
+        jwe.encrypt(encrypter)
 
         jwe.serialize()
     }.mapError { throwable ->

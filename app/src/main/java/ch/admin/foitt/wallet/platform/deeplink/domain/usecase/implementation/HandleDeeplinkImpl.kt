@@ -71,6 +71,8 @@ class HandleDeeplinkImpl @Inject constructor(
         Timber.d("Deeplink read: $deepLink")
         deepLinkIntentRepository.reset()
 
+        println("Eeeeeeeeeeeeeeeeeeeentry point for deeplink navigation: $deepLink")
+
         val nextDirection = processInvitation(deepLink)
             .mapBoth(
                 success = { invitation ->

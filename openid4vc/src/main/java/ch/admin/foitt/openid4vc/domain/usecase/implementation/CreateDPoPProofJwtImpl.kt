@@ -7,10 +7,10 @@ import ch.admin.foitt.openid4vc.domain.model.credentialoffer.CredentialOfferErro
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.JWSKeyPair
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.toCreateDPoPProofJwtError
 import ch.admin.foitt.openid4vc.domain.model.jwt.Jwt
-import ch.admin.foitt.openid4vc.domain.model.toCurve
 import ch.admin.foitt.openid4vc.domain.model.toJWSAlgorithm
 import ch.admin.foitt.openid4vc.domain.usecase.CreateDPoPProofJwt
 import ch.admin.foitt.openid4vc.domain.usecase.CreateJwk
+import ch.admin.foitt.openid4vc.domain.usecase.jwt.implementation.toJWSSigner
 import ch.admin.foitt.openid4vc.utils.Constants
 import ch.admin.foitt.openid4vc.utils.createBase64UrlEncodedDigest
 import ch.admin.foitt.openid4vc.utils.createDigest
@@ -20,7 +20,6 @@ import com.github.michaelbull.result.coroutines.runSuspendCatching
 import com.github.michaelbull.result.mapError
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSHeader
-import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
@@ -72,7 +71,7 @@ internal class CreateDPoPProofJwtImpl @Inject constructor(
 
         runSuspendCatching {
             SignedJWT(header, payload).apply {
-                sign(ECDSASigner(keyPair.keyPair.private, keyPair.algorithm.toCurve()))
+                sign(keyPair.algorithm.toJWSSigner(keyPair.keyPair.private))
             }.serialize()
         }.mapError { throwable ->
             CredentialOfferError.Unexpected(throwable)

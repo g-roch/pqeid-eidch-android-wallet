@@ -10,6 +10,11 @@ data class KeyAttestation(
 ) {
     companion object {
         const val KEY_ALIAS = "keyAttestation"
+
+        // See ClientAttestation.SIGNING_ALGORITHM for why this defaults to ES256. Note that
+        // GenerateProofKeyPairsImpl.createHardwareKeyPairWithKeyAttestation already overrides
+        // this default with the issuer-negotiated algorithm on every real call — this default
+        // only applies to callers that don't specify one explicitly.
         val signingAlgorithm = SigningAlgorithm.ES256
     }
 }

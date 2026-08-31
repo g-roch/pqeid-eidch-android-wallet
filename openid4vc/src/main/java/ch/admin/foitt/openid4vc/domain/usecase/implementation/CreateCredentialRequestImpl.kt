@@ -7,7 +7,6 @@ import ch.admin.foitt.openid4vc.domain.model.credentialoffer.CredentialRequestCr
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.DeferredCredentialRequest
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.VerifiableCredentialRequest
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialRequestEncryption
-import ch.admin.foitt.openid4vc.domain.model.credentialoffer.metadata.CredentialResponseEncryption
 import ch.admin.foitt.openid4vc.domain.model.credentialoffer.toCreateCredentialRequestError
 import ch.admin.foitt.openid4vc.domain.model.jwe.CreateJWEError
 import ch.admin.foitt.openid4vc.domain.model.jwk.Jwk
@@ -20,12 +19,7 @@ import ch.admin.foitt.openid4vc.utils.SafeJson
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.coroutines.coroutineBinding
-import com.github.michaelbull.result.coroutines.runSuspendCatching
 import com.github.michaelbull.result.mapError
-import com.nimbusds.jose.jwk.Curve.P_256
-import com.nimbusds.jose.jwk.ECKey
-import timber.log.Timber
-import java.security.interfaces.ECPublicKey
 import javax.inject.Inject
 
 internal class CreateCredentialRequestImpl @Inject constructor(
@@ -38,7 +32,6 @@ internal class CreateCredentialRequestImpl @Inject constructor(
     ): Result<String, CreateCredentialRequestError> = coroutineBinding {
         val credentialRequestCredentialResponseEncryption = createCredentialRequestCredentialResponseEncryption(
             payloadEncryptionKeyPair = payloadEncryption.responseEncryptionKeyPair,
-            responseEncryption = payloadEncryption.responseEncryption,
         ).bind()
 
         createJWECredentialRequest(
@@ -97,25 +90,17 @@ internal class CreateCredentialRequestImpl @Inject constructor(
      */
     private suspend fun createCredentialRequestCredentialResponseEncryption(
         payloadEncryptionKeyPair: PayloadEncryptionKeyPair,
-        responseEncryption: CredentialResponseEncryption,
     ): Result<CredentialRequestCredentialResponseEncryption, CreateCredentialRequestError> = coroutineBinding {
-        val publicKey = runSuspendCatching {
-            val pub = payloadEncryptionKeyPair.keyPair.keyPair.public
-            ECKey.Builder(P_256, pub as ECPublicKey).build()
-        }.mapError { throwable ->
-            Timber.e(t = throwable, message = "Error when creating jwk for payload encryption")
-            CredentialOfferError.Unexpected(throwable)
-        }.bind()
+        val jweKeyPair = payloadEncryptionKeyPair.keyPair
 
-        // create JWK with wallet public key
+        // X-Wing public key — mirror the nimbus XWingKey JWK format the issuer itself uses
+        // (kty "XWING", raw public key encoding in "x").
         val jwk = Jwk(
-            kid = payloadEncryptionKeyPair.keyPair.keyId,
-            kty = publicKey.keyType.toString(),
+            kid = jweKeyPair.keyId,
+            kty = jweKeyPair.jwk.keyType.value,
             use = "enc",
-            crv = publicKey.curve.name,
-            alg = responseEncryption.algValuesSupported.firstOrNull(),
-            x = publicKey.x.toString(),
-            y = publicKey.y.toString(),
+            alg = payloadEncryptionKeyPair.alg,
+            x = jweKeyPair.jwk.x.toString(),
         )
 
         CredentialRequestCredentialResponseEncryption(

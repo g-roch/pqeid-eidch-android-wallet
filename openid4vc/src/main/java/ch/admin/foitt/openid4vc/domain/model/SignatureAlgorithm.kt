@@ -20,6 +20,9 @@ enum class SignatureAlgorithm(override val stdName: String) : Algorithm {
 
     @SerialName("EdDSA")
     EdDSA("EdDSA"),
+
+    @SerialName("ML-DSA-44")
+    ML_DSA_44("ML-DSA-44"),
     ;
 
     companion object {

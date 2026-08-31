@@ -9,29 +9,23 @@ import com.github.michaelbull.result.coroutines.runSuspendCatching
 import com.github.michaelbull.result.mapError
 import com.nimbusds.jose.JWEDecrypterOption
 import com.nimbusds.jose.JWEObject
-import com.nimbusds.jose.crypto.ECDHDecrypter
+import com.nimbusds.jose.crypto.XWingDecrypter
 import com.nimbusds.jose.crypto.opts.MaxCompressedCipherTextLength
-import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.XWingKey
 import timber.log.Timber
-import java.security.PrivateKey
 import javax.inject.Inject
 
 internal class DecryptJWEImpl @Inject constructor() : DecryptJWE {
     override fun invoke(
         jweString: String,
-        privateKey: PrivateKey,
+        xWingKey: XWingKey,
         jweMaxCompressedCipherTextLength: Int,
         jweMaxDecompressedPayloadSize: Int,
     ): Result<String, DecryptJWEError> = runSuspendCatching {
         val jwe = JWEObject.parse(jweString)
-        val providedPublicKey = jwe.header.ephemeralPublicKey.toECKey()
-
-        val ecKey = ECKey.Builder(providedPublicKey)
-            .privateKey(privateKey)
-            .build()
 
         jwe.decrypt(
-            ECDHDecrypter(ecKey),
+            XWingDecrypter(xWingKey),
             setOf<JWEDecrypterOption>(MaxCompressedCipherTextLength(jweMaxCompressedCipherTextLength))
         )
 

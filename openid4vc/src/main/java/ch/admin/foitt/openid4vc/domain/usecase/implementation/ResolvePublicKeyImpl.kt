@@ -38,11 +38,22 @@ internal class ResolvePublicKeyImpl @Inject constructor(
 
     private fun DidDoc.getPublicKey(kid: String): Result<Jwk, VcSdJwtError.InvalidJwt> = runSuspendCatching {
         val publicKey = getKeyByMethodId(kid)
-        val x = checkNotNull(publicKey.x)
-        val crv = checkNotNull(publicKey.crv)
         val kty = checkNotNull(publicKey.kty)
-        val y = if (kty == com.nimbusds.jose.jwk.KeyType.EC.value) checkNotNull(publicKey.y) else publicKey.y
 
-        Jwk(x = x, y = y, crv = crv, kty = kty)
+        when (kty) {
+            com.nimbusds.jose.jwk.KeyType.EC.value -> {
+                val x = checkNotNull(publicKey.x)
+                val y = checkNotNull(publicKey.y)
+                val crv = checkNotNull(publicKey.crv)
+                Jwk(kty = kty, crv = crv, x = x, y = y)
+            }
+            "AKP" -> {
+                // ML-DSA (PQEID) — public key material is in `pubKey`, alg identifies the parameter set
+                val alg = checkNotNull(publicKey.alg)
+                val pubKey = checkNotNull(publicKey.pubKey)
+                Jwk(kty = kty, alg = alg, pubKey = pubKey)
+            }
+            else -> error("Unsupported key type: $kty")
+        }
     }.mapError { _ -> VcSdJwtError.InvalidJwt }
 }

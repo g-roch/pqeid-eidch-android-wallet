@@ -56,11 +56,40 @@ internal class GetAuthorizationResponseConfigImpl @Inject constructor(
             state = authorizationRequest.state,
         )
 
-        if (authorizationRequest.responseMode == PresentationResponseMode.DIRECT_POST_JWT.value) {
-            getJWEAuthorizationResponseConfig(authorizationRequest, authorizationResponse)
-        } else {
-            Err(PresentationRequestError.Unexpected(IllegalStateException("invalid response mode")))
+        when (authorizationRequest.responseMode) {
+            PresentationResponseMode.DIRECT_POST_JWT.value ->
+                getJWEAuthorizationResponseConfig(authorizationRequest, authorizationResponse)
+            PresentationResponseMode.DIRECT_POST.value ->
+                getDirectPostAuthorizationResponseConfig(authorizationRequest, authorizationResponse)
+            else ->
+                Err(PresentationRequestError.Unexpected(IllegalStateException("invalid response mode")))
         }.bind()
+    }
+
+    /**
+     * Unencrypted `direct_post` response: the `vp_token` (and `state`) are sent as plain
+     * form parameters instead of a single encrypted `response` JWE.
+     */
+    private fun getDirectPostAuthorizationResponseConfig(
+        authorizationRequest: AuthorizationRequest,
+        authorizationResponse: AuthorizationResponse,
+    ): Result<AuthorizationResponseConfig, GetAuthorizationResponseConfigError> = binding {
+        val params = when (authorizationResponse) {
+            is AuthorizationResponse.Dcql -> {
+                val vpToken = safeJson.safeEncodeObjectToString(authorizationResponse.vpToken)
+                    .mapError(JsonParsingError::toGetPresentationRequestConfigError)
+                    .bind()
+                buildMap {
+                    put(AuthorizationResponseParam.VP_TOKEN, vpToken)
+                    authorizationRequest.state?.let { put(AuthorizationResponseParam.STATE, it) }
+                }
+            }
+        }
+
+        AuthorizationResponseConfig(
+            type = AuthorizationResponseType.DCQL,
+            params = params,
+        )
     }
 
     private fun getAuthorizationResponseByDcqlId(

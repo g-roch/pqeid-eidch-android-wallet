@@ -31,3 +31,6 @@ fun CreatePayloadEncryptionKeyPairError.toGetPayloadEncryptionTypeError(): GetPa
     is PayloadEncryptionError.UnsupportedProofKeyStorageSecurityLevel -> this
     is PayloadEncryptionError.Unexpected -> this
 }
+
+fun Throwable.toCreatePayloadEncryptionKeyPairError(): CreatePayloadEncryptionKeyPairError =
+    PayloadEncryptionError.Unexpected(this)

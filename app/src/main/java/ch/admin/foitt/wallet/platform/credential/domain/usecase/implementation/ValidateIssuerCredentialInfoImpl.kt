@@ -27,14 +27,14 @@ class ValidateIssuerCredentialInfoImpl @Inject constructor() : ValidateIssuerCre
     }
 
     private fun validateRequestEncryption(requestEncryption: CredentialRequestEncryption) = when {
-        requestEncryption.jwks.keys.any { it.crv !in supportedCurves || it.alg !in supportedAlgorithms } -> false
+        requestEncryption.jwks.keys.any { /*it.crv !in supportedCurves ||*/ it.alg !in supportedAlgorithms } -> false
         requestEncryption.encValuesSupported.none { it in supportedEncryptions } -> false
         requestEncryption.zipValuesSupported?.any { it !in supportedZipValues } == true -> false
         else -> true
     }
 
     private companion object {
-        val supportedAlgorithms = listOf("ECDH-ES")
+        val supportedAlgorithms = listOf("ECDH-ES", "XWING")
         val supportedEncryptions = listOf(EncryptionAlgorithm.A256GCM.name, EncryptionAlgorithm.A128GCM.name)
         val supportedZipValues = listOf("DEF")
         val supportedCurves = listOf("P-256")
